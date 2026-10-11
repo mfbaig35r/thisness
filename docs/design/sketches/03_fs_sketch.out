@@ -1,0 +1,53 @@
+=== Dataset
+  805 organizations ({'normal': 700, 'common': 25, 'heavy': 5, 'family': 60, 'acronym': 15}), 1673 observations
+
+=== Blocking
+  candidate pairs: 16,185 (all pairs: 1,398,628)
+  true pairs covered: 3663/3804 (96.3%)
+  organizations whose observations are connected by candidates: 801/805 (99.5%)
+    identifier      503 pairs,    503 true,   27 true pairs found by no other generator
+    domain          765 pairs,    745 true,   10 true pairs found by no other generator
+    name_key      3,637 pairs,  2,549 true,    0 true pairs found by no other generator
+    rare_token    6,635 pairs,  3,231 true,    4 true pairs found by no other generator
+    acronym           3 pairs,      3 true,    3 true pairs found by no other generator
+    trigram      14,136 pairs,  3,618 true,  303 true pairs found by no other generator
+
+=== m estimates vs truth (P(level | match))
+  name       exact_key       true 0.670   sessions 0.688   single EM 0.692   u 0.00260
+  name       token_typo      true 0.273   sessions 0.230   single EM 0.235   u 0.00092
+  name       token_set_0.92  true 0.013   sessions 0.015   single EM 0.008   u 0.00004
+  name       acronym         true 0.001   sessions 0.000   single EM 0.001   u 0.00001
+  name       brand_only      true 0.037   sessions 0.061   single EM 0.057   u 0.00022
+  reg_id     exact           true 0.969   sessions 0.936   single EM 0.893   u 0.00482
+  reg_id     else            true 0.031   sessions 0.064   single EM 0.107   u 0.99518
+  domain     exact           true 1.000   sessions 0.931   single EM 0.924   u 0.00386
+  location   postal          true 0.331   sessions 0.274   single EM 0.241   u 0.00100
+  location   city            true 0.334   sessions 0.303   single EM 0.266   u 0.02737
+  location   city_fuzzy      true 0.027   sessions 0.024   single EM 0.022   u 0.00220
+  location   country_only    true 0.307   sessions 0.399   single EM 0.324   u 0.22445
+  location   different_country true 0.000   sessions 0.000   single EM 0.147   u 0.74498
+  legal_form same            true 1.000   sessions 1.000   single EM 0.766   u 0.14866
+  lambda: identifier/domain session 1.000, name session 0.276
+
+=== Variants (accepted clusters; review clusters held as singletons)
+           variant      thresh  T_high  pairP  pairR    B3 P    B3 R  FMclus  contam  maxbad  review  heavyR  Premier
+    none (no peel)       tuned    12.0  0.999  0.600  1.0000  0.8069       0       0       0      90   0.512        0
+    none (no peel)  label-free    11.4  0.980  0.808  0.9992  0.8916       1       1       3     117   0.557        1
+              none       tuned    12.0  0.999  0.600  1.0000  0.8371       0       0       0      30   0.828        0
+              none  label-free    11.4  0.980  0.808  0.9992  0.9260       1       1       3      53   0.917        1
+             naive       tuned     8.2  0.996  0.864  0.9969  0.9715       3       4       6      22   0.917        0
+             naive  label-free    11.4  1.000  0.641  1.0000  0.9054       0       0       0      28   0.828        0
+             dedup       tuned     8.3  0.996  0.879  0.9969  0.9726       3       4       6      22   0.928        0
+             dedup  label-free    11.4  1.000  0.644  1.0000  0.9056       0       0       0      29   0.828        0
+            entity       tuned     8.1  0.997  0.912  0.9969  0.9718       3       4       6      22   0.928        0
+            entity  label-free    11.4  1.000  0.737  1.0000  0.9139       0       0       0      46   0.862        0
+  entity (no caps)       tuned    19.7  1.000  0.219  1.0000  0.6442       0       0       0      27   0.332        0
+  entity (no caps)  label-free    11.4  0.983  0.767  0.9904  0.9155       8      14       8      71   0.907        0
+  FMclus = accepted clusters mixing >1 true organization; contam = observations in
+  them not of the majority organization; heavyR = B-cubed recall on the 5 heavy
+  suppliers; Premier = accepted clusters mixing >1 of the 25 'Premier Services'.
+
+=== Group companies (entity TF, label-free threshold)
+  caps off: accepted clusters mixing two group companies: 8
+  caps on : accepted clusters mixing two group companies: 0
+  brand_only candidate pairs: 299; 155 are sibling companies (relationship candidates), 139 are the same company, 5 other

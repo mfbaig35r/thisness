@@ -1,0 +1,31 @@
+=== Ledger position after each commit
+    8  run1
+   11  provisional merge
+   16  operator merge B->A
+   22  unmerge (reactivate B)
+
+=== Optimistic version check
+  stale merge rejected (expected (3, 2), found (2, 1)); ledger unchanged: True
+
+=== Point-in-time membership (branch 1)
+  o3 'International Business Machines': @8->org_B, @11->org_B, @16->org_A, @22->org_B
+  o4 'I.B.M.': @8->org_C, @11->org_A, @16->org_A, @22->org_A
+
+=== Branch 1: unmerge reactivates org_B
+  org_A active      v4  members=['o1', 'o2', 'o4']
+  org_B active      v3  members=['o3', 'o5']
+  org_C retired     v2  resolves to ['org_A']
+  replay identical for memberships and entities; 4 invariants hold
+
+=== Branch 2: partial split leaves org_B ambiguous
+  org_A active      v4  members=['o1', 'o2', 'o4', 'o5']
+  org_B retired     v2  resolves to ['org_A', 'org_D']
+  org_C retired     v2  resolves to ['org_A']
+  org_D active      v1  members=['o3']
+  replay identical for memberships and entities; 4 invariants hold
+
+=== Blocking (run_1)
+  name.key (cap 3): [('o1', 'o2', 'IBM'), ('o1', 'o4', 'IBM'), ('o2', 'o4', 'IBM')]
+      skipped oversize blocks: []
+  name.token (cap 2): [('o2', 'o5', 'CORP'), ('o3', 'o5', 'BUSINESS'), ('o3', 'o5', 'MACHINES')]
+      skipped oversize blocks: [('IBM', 3)]

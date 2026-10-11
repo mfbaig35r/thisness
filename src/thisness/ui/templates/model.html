@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_macros.html" import weight %}
+{% set active = "model:" ~ entity_type %}
+{% block title %}{{ entity_type|capitalize }} model{% endblock %}
+{% block topbar %}<span class="title">{{ icon("chart-dots") }} {{ entity_type|capitalize }} model</span>
+  {% if source %}<span class="chip {{ 'tone-green' if source == 'fitted' else 'tone-amber' }}">{{ source }}</span>{% endif %}{% endblock %}
+{% block content %}
+{% if fs is none %}<div class="empty">No model yet. One is fitted on the first run with enough observations.</div>{% else %}
+<div class="grid-2">
+  <div class="stat"><div class="muted">Strong edge at</div><div class="v num">{{ "%.1f"|format(threshold) }} bits</div><div class="light">floor {{ profile.min_strong_weight }}</div></div>
+  <div class="stat"><div class="muted">Contradiction at or below</div><div class="v num">{{ "%.1f"|format(t_low) }} bits</div><div class="light">between: contested</div></div>
+  <div class="stat"><div class="muted">Match rate among candidates</div><div class="v num">{{ "%.3f"|format(fs.lam) }}</div><div class="light">λ, fitted by EM</div></div>
+  <div class="stat"><div class="muted">Comparisons</div><div class="v num">{{ comparisons|length }}</div><div class="light">{% if fs.unlearned %}unlearned: {{ fs.unlearned|join(', ') }}{% else %}all learned{% endif %}</div></div>
+</div>
+<div class="prose">Each comparison sorts a pair into one level. A level's weight is log₂(m/u): how much more often it occurs among matching pairs (m) than among random pairs (u). Weights add up; caps hold levels that also occur between related but distinct entities at or below a ceiling.</div>
+{% for c in comparisons %}
+<div class="section-title">{{ icon("scale", 14) }} {{ c.name }} <span class="light">{{ c.features|join(', ') }}</span></div>
+<table class="records fixed">
+  <colgroup><col style="width:30%"><col style="width:14%"><col style="width:14%"><col style="width:14%"><col></colgroup>
+  <thead><tr><th>Level</th><th class="num">m</th><th class="num">u</th><th class="num">Weight (bits)</th><th>Notes</th></tr></thead>
+  <tbody>{% for l in c.levels %}
+    <tr><td>{{ l.label }}</td><td class="num">{{ "%.4f"|format(l.m) }}</td><td class="num">{{ "%.5f"|format(l.u) }}</td><td class="num">{{ weight(l.weight) }}</td>
+      <td>{% if l.cap is not none %}<span class="chip tone-amber">capped at {{ l.cap }}</span> {% endif %}{% if l.relationship %}<span class="chip tone-sky">relationship signal</span>{% endif %}</td></tr>
+  {% endfor %}</tbody>
+</table>
+{% endfor %}
+{% endif %}
+<div class="section-title">{{ icon("adjustments-horizontal", 14) }} Profile <span class="light mono">{{ profile.ref.ref }}</span></div>
+<table class="records">
+  <thead><tr><th>Attribute</th><th>Type</th><th>Cardinality</th><th>Sensitivity</th><th>To external models</th></tr></thead>
+  <tbody>{% for name, a in profile.attributes.items() %}
+    <tr><td>{{ icon(ATTRIBUTE_ICONS.get(name, 'circle-dashed'), 14) }} {{ name }}</td><td>{{ a.data_type }}</td><td>{{ a.cardinality }}</td><td>{{ a.sensitivity }}</td><td>{{ a.external_model_policy }}</td></tr>
+  {% endfor %}</tbody>
+</table>
+{% endblock %}

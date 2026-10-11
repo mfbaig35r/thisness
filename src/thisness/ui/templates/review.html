@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% from "_macros.html" import state_chip, avatar, weight, verdict_chip %}
+{% set active = "reviews" %}
+{% block title %}Review{% endblock %}
+{% block topbar %}
+  <span class="crumb"><a href="/reviews">{{ icon("list-check") }} Review queue</a></span><span class="crumb-sep">/</span>
+  <span class="title">{{ case.review.kind|capitalize }} review</span> <span class="mono light">{{ case.review.review_id }}</span>
+  {% if case.decision %}<span class="actions"><a class="btn small" href="#" hx-get="/panel/decision/{{ case.decision.decision_id }}" hx-target="#panel-body" hx-boost="false">{{ icon("scale", 14) }} Why this was raised</a></span>{% endif %}
+{% endblock %}
+{% block content %}
+<div class="question">{{ case.question }}</div>
+<div class="question-sub">{{ plural(case.nodes|length, 'record') }} in {{ plural(board|length, 'entity') }} today. Drag cards between columns to regroup; every answer is stored with its reason and can be undone.</div>
+{% if status == "open" and (recommendation or can_ask) %}
+<div class="suggestion" id="suggestion">
+  {% if recommendation %}
+    <div class="suggestion-head">{{ icon("sparkles", 15) }} <b>Suggestion</b>
+      <span class="chip tone-purple">{{ recommendation.resolution }}{% if recommendation.relation %}: {{ recommendation.relation|replace('_', ' ') }}{% endif %}</span>
+      <span class="light">{{ recommendation.actor.id }}</span>
+      {% if recommendation.invocation_id %}<a class="light" href="#" hx-get="/panel/invocation/{{ recommendation.invocation_id }}" hx-target="#panel-body" hx-boost="false">the exchange</a>{% endif %}
+      <span class="spacer"></span>
+      {% if suggested %}<button class="btn small" type="button" onclick='applyGroups({{ suggested }}, {{ recommendation.resolution|tojson }})'>{{ icon("list-check", 14) }} Apply to the board</button>{% endif %}
+    </div>
+    {% if recommendation.rationale %}<div class="suggestion-body">{{ recommendation.rationale }}</div>{% endif %}
+    <div class="suggestion-codes">{% for c in recommendation.reason_codes %}<span class="chip">{{ c|replace('_', ' ')|lower }}</span>{% endfor %}
+      {% if recommendation.cited_judgments %}<span class="light">relies on {{ plural(recommendation.cited_judgments|length, 'comparison') }}, marked below</span>{% endif %}</div>
+  {% else %}
+    <div class="suggestion-head">{{ icon("sparkles", 15) }} <span class="muted">No suggestion yet.</span><span class="spacer"></span>
+      <form hx-post="/reviews/{{ case.review.review_id }}/recommend" hx-target="#ask-error" hx-boost="false" hx-indicator="#ask-busy">
+        <button class="btn small">{{ icon("sparkles", 14) }} Ask the model</button> <span id="ask-busy" class="htmx-indicator light">asking…</span></form></div>
+    <div id="ask-error"></div>
+  {% endif %}
+</div>
+{% endif %}
+<div class="board-wrap">
+<div class="board">
+  {% for col in board %}
+  <div class="column" data-column="{{ col.entity_id }}">
+    <div class="column-head">{{ avatar(col.name) }} <a href="/entity/{{ col.entity_id }}" class="title">{{ col.name }}</a> {{ state_chip(col.state) }} <span class="count" title="{{ plural(col.size, 'observation') }} in this entity">{{ col.nodes|length }}{% if col.size > col.nodes|length %} of {{ col.size }}{% endif %}</span></div>
+    <div class="column-body">
+      {% for n in col.nodes %}
+      {% set compact = col.nodes|length > 6 %}
+      <div class="node-card {{ 'compact' if compact }}" data-node="{{ n.node_id }}" data-home="{{ col.entity_id }}">
+        <div class="nm">{% if n.kind == 'entity' %}{{ icon(TYPE_ICONS.get(entity_type, 'circle-dashed'), 14) }} Whole entity{% else %}{{ n.attributes.get('name') or n.node_id }}{% endif %}{% if refs.get(n.node_id) %}<span class="ref" title="This record's label in the model's request">{{ refs[n.node_id] }}</span>{% endif %}</div>
+        {% if n.kind == 'observation' %}
+          {% set loc = [n.attributes.get('city'), n.attributes.get('country')]|select|join(', ') %}
+          {% if loc %}<div class="ln">{{ icon("map-pin", 12) }} {{ loc }}</div>{% endif %}
+          {% set status = n.attributes.get(assertion.status) if assertion else none %}
+          {% if status %}<div class="ln">{{ icon("scale", 12) }} {{ status }}{% if n.attributes.get(assertion.accepted) %} of {{ n.attributes.get(assertion.accepted) }}{% endif %}</div>{% endif %}
+          {% for k in ((([] if compact else card_fields)|select("in", n.attributes))|list)[:3] %}<div class="ln">{{ icon(ATTRIBUTE_ICONS.get(k, 'circle-dashed'), 12) }} {{ fmt(n.attributes.get(k)) }}</div>{% endfor %}
+          <div class="ln">{{ icon("database", 12) }} {{ n.source.type }}:{{ n.source.id }}
+            <a href="#" hx-get="/panel/observation/{{ n.node_id }}" hx-target="#panel-body" hx-boost="false" style="margin-left:auto">{{ icon("layout-sidebar-right", 12) }}</a></div>
+        {% else %}<div class="ln">{{ plural(n.size, 'observation') }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+  <div class="column new" data-column="new">
+    <div class="column-head">{{ icon("plus", 14) }} <span class="muted">New entity</span></div>
+    <div class="column-body"></div>
+  </div>
+</div>
+</div>
+
+
+{% if status == "open" %}
+<form class="answer" hx-post="/reviews/{{ case.review.review_id }}/resolve" hx-target="#answer-error" hx-boost="false">
+  <input type="hidden" name="resolution" value="dismiss">
+  <input type="hidden" name="groups" id="groups-field" value="">
+  {% if recommendation %}<input type="hidden" name="recommendation_id" value="{{ recommendation.decision_id }}">{% endif %}
+  <input type="text" name="reason" placeholder="Reason (stored with the decision)" required>
+  {% if board|length > 1 %}
+    <button class="btn primary" onclick="setResolution(this.form,'same')">{{ icon("git-merge", 14) }} All the same entity</button>
+    <button class="btn" onclick="setResolution(this.form,'different')">{{ icon("arrows-split", 14) }} Different entities</button>
+  {% else %}
+    <button class="btn primary" onclick="setResolution(this.form,'same')">{{ icon("circle-check", 14) }} One entity</button>
+  {% endif %}
+  <button class="btn" id="save-groups" disabled onclick="setResolution(this.form,'groups')">{{ icon("list-check", 14) }} Save grouping</button>
+  {% if board|length == 2 %}
+    <select name="relation">{% for r in relations %}<option value="{{ r }}">{{ r|replace('_', ' ') }}</option>{% endfor %}</select>
+    <button class="btn" onclick="setResolution(this.form,'related')">{{ icon("link", 14) }} Related</button>
+  {% endif %}
+  {% if cut %}<button class="btn" type="button" onclick='applyCut(...{{ cut }})'>{{ icon("arrows-split", 14) }} Suggested cut</button>{% endif %}
+  <button class="btn danger" onclick="setResolution(this.form,'dismiss')">Dismiss</button>
+  <div id="answer-error" style="flex-basis:100%"></div>
+</form>
+{% else %}
+<div class="answer"><span class="chip">{{ status }}</span> This review is closed.</div>
+{% endif %}
+
+<div class="pairs">
+  <h3>What the resolver saw <span class="light">pairs scored, those across today's groups first{% if hidden %}; {{ hidden }} more not shown{% endif %}</span></h3>
+  {% if rows %}
+  <table class="records">
+    <thead><tr><th class="ref-col"></th><th>Left</th><th>Right</th><th class="num">Weight (bits)</th><th>Verdict</th><th>Across groups</th></tr></thead>
+    <tbody>{% for r in rows %}
+      <tr hx-get="/panel/decision/{{ r.j.decision_id }}" hx-target="#panel-body" hx-boost="false" {% if r.cited %}class="cited"{% endif %}>
+        <td class="ref-col">{% if r.label %}<span class="ref">{{ r.label }}</span>{% endif %}</td>
+        <td>{% if r.cited %}{{ icon("sparkles", 12, "cite") }} {% endif %}{{ r.left }}{% if r.left_ref %} <span class="ref">{{ r.left_ref }}</span>{% endif %}</td><td>{{ r.right }}{% if r.right_ref %} <span class="ref">{{ r.right_ref }}</span>{% endif %}</td>
+        <td class="num">{% if r.model %}<span class="chip tone-purple">model: {{ r.model }}</span>{% else %}{{ weight(r.weight) }}{% endif %}</td>
+        <td>{{ verdict_chip(r.j.verdict.value) }}</td><td>{% if r.across %}<span class="chip tone-amber">across</span>{% endif %}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+  {% else %}<div class="light">No scored pairs among these records.</div>{% endif %}
+</div>
+{% endblock %}

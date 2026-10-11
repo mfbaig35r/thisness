@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_macros.html" import entity_link, avatar %}
+{% set active = "relationships" %}
+{% block title %}Possible relationships{% endblock %}
+{% block topbar %}<span class="title">{{ icon("link") }} Possible relationships</span>{% endblock %}
+{% block content %}
+<div class="viewbar"><span class="view">{{ icon("link") }} {{ plural(total_hoods, 'neighborhood') }}</span>
+  <span class="light">{{ plural(total_pairs, 'pair') }}{% if total_hoods > page_size %} · showing {{ offset + 1 }} to {{ [offset + page_size, total_hoods]|min }}, largest first{% endif %}</span>
+  {% if offset > 0 %}<a class="filter" href="?offset={{ [offset - page_size, 0]|max }}">Previous</a>{% endif %}
+  {% if offset + page_size < total_hoods %}<a class="filter" href="?offset={{ offset + page_size }}">Next</a>{% endif %}
+  <span class="spacer"></span>
+  <span class="light">Entities with a relationship signal (a shared brand, a household) that were kept apart. Some are related; some are one entity the resolver missed.</span></div>
+{% for hood, cands in groups.items() %}
+<div class="hood" style="padding-left:0;padding-right:0"><div style="padding:0 16px">
+  <h3>{{ icon("users", 14) }} {{ names[hood] }} <span class="light">{{ plural(cands[0].neighborhood_size, 'entity') }}, {{ plural(cands|length, 'pair') }}</span></h3></div>
+  <table class="records fixed">
+    <colgroup><col style="width:34%"><col style="width:34%"><col><col style="width:110px"></colgroup>
+    <tbody>
+    {% for c in cands %}
+    <tr hx-get="/panel/candidate?left={{ c.left_entity }}&right={{ c.right_entity }}" hx-target="#panel-body" hx-boost="false">
+      <td><span class="name-chip">{{ avatar(names[c.left_entity]) }}<span>{{ names[c.left_entity] }}</span></span></td>
+      <td><span class="name-chip">{{ avatar(names[c.right_entity]) }}<span>{{ names[c.right_entity] }}</span></span></td>
+      <td>{% for s in c.signals %}<span class="chip tone-sky">{{ s|replace('/', ': ')|replace('_', ' ') }}</span> {% endfor %}<span class="chip">{{ plural(c.pairs, 'pair') }}</span></td>
+      <td><span class="btn small">{{ icon("scale", 14) }} Decide</span></td>
+    </tr>
+    {% endfor %}
+    {% if hidden[hood] %}<tr><td colspan="4" class="light">+{{ "{:,}".format(hidden[hood]) }} more pairs in this neighborhood</td></tr>{% endif %}
+    </tbody>
+  </table>
+</div>
+{% else %}<div class="empty">{{ icon("circle-check", 24) }}<p>No relationship signals between separate entities.</p></div>{% endfor %}
+{% endblock %}

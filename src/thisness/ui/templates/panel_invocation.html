@@ -1,0 +1,16 @@
+{% set head %}{{ icon("sparkles") }} <span class="title">Model call</span><span class="chip {{ 'tone-green' if c.status == 'ok' else 'tone-blue' if c.status == 'cached' else 'tone-red' }}">{{ c.status }}</span>{% endset %}
+{% include "_panel_head.html" %}
+<div class="panel-body">
+  <div class="section-title">Call</div>
+  <div class="field"><span class="label">{{ icon("sparkles", 14) }} model</span><span class="value">{{ c.model }}{% if c.model_build and c.model_build != c.model %} <span class="light">{{ c.model_build }}</span>{% endif %} <span class="light">via {{ c.provider }}</span></span></div>
+  <div class="field"><span class="label">{{ icon("file-text", 14) }} prompt</span><span class="value mono">{{ c.prompt_ref }}</span></div>
+  <div class="field"><span class="label">{{ icon("hash", 14) }} tokens</span><span class="value num">{{ c.input_tokens or 0 }} in · {{ c.output_tokens or 0 }} out{% if c.attempts > 1 %} · {{ c.attempts }} attempts{% endif %}</span></div>
+  <div class="field"><span class="label">{{ icon("scale", 14) }} cost</span><span class="value num">{% if c.cost_usd is not none %}${{ "%.5f"|format(c.cost_usd) }}{% else %}<span class="light">no listed price</span>{% endif %}{% if c.latency_ms %} · {{ c.latency_ms }} ms{% endif %}</span></div>
+  {% if c.cached_from %}<div class="field"><span class="label">{{ icon("history", 14) }} cached</span><span class="value"><a href="#" class="mono" hx-get="/panel/invocation/{{ c.cached_from }}" hx-target="#panel-body">{{ c.cached_from }}</a></span></div>{% endif %}
+  {% if c.error %}<div class="field"><span class="label">{{ icon("alert-triangle", 14) }} error</span><span class="value">{{ c.error[:600] }}</span></div>{% endif %}
+  <div class="field"><span class="label">{{ icon("clock", 14) }} at</span><span class="value">{{ fmt(c.created_at) }}</span></div>
+  <div class="field"><span class="label">{{ icon("hash", 14) }} id</span><span class="value mono light">{{ c.invocation_id }}</span></div>
+  <div class="section-title">What was sent <span class="light">after privacy filtering</span></div>
+  <pre class="json">{{ payload }}</pre>
+  {% if c.output %}<div class="section-title">The answer</div><pre class="json">{{ output }}</pre>{% endif %}
+</div>

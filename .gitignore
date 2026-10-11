@@ -1,0 +1,13 @@
+.DS_Store
+__pycache__/
+*.pyc
+.ruff_cache/
+.venv/
+.coverage
+htmlcov/
+.pytest_cache/
+dist/
+*.egg-info/
+
+# Private reference material (book chapters, drafts): kept locally, never committed.
+docs/reference/

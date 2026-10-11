@@ -1,0 +1,106 @@
+{% from "_macros.html" import state_chip, avatar, entity_link, panel_link, decision_link %}
+{% if tab == "values" %}
+<div class="tab-body values">
+  {% for a in d.attributes %}
+  <div>
+    <h3>{{ icon(ATTRIBUTE_ICONS.get(a.attribute, 'circle-dashed'), 14) }} {{ a.attribute|replace('_', ' ') }} <span class="light">{{ plural(a.values|length, 'value') }} across {{ plural(a.observed, 'observation') }}</span></h3>
+    {% for v in a.values[:12] %}
+    <div class="bar-row">
+      <span>{{ fmt(v.value) }}</span>
+      <span class="bar"><div style="width: {{ (100 * v.observations|length / a.observed)|round(1) }}%"></div></span>
+      <span class="num muted">{{ v.observations|length }} <span class="light">/ {{ a.observed }}</span></span>
+    </div>
+    {% endfor %}
+    {% if a.values|length > 12 %}<div class="light">+{{ a.values|length - 12 }} more values</div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% elif tab == "members" %}
+<div class="tab-body flush">
+<table class="records">
+  <thead><tr><th>{{ icon("id", 14) }} Name</th><th>{{ icon("database", 14) }} Source</th><th>{{ icon("world", 14) }} Location</th><th>{{ icon("hash", 14) }} Observation</th></tr></thead>
+  <tbody>
+  {% for m in d.members %}
+    <tr hx-get="/panel/observation/{{ m.observation_id }}" hx-target="#panel-body" hx-boost="false">
+      <td>{% if m.attributes is none %}<span class="light">redacted</span>{% else %}{{ m.attributes.get('name') or '' }}{% endif %}</td>
+      <td><span class="chip">{{ m.source.type }}</span> <span class="light">{{ m.source.id }}</span></td>
+      <td class="muted">{% if m.attributes %}{{ [m.attributes.get('city'), m.attributes.get('country')]|select|join(', ') }}{% endif %}</td>
+      <td class="mono light">{{ m.observation_id }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<div class="pager">
+  <span>{{ d.members_offset + 1 }}–{{ d.members_offset + d.members|length }} of {{ "{:,}".format(d.member_count) }}</span>
+  {% if page > 1 %}<a class="btn small" href="#" hx-get="/entity/{{ d.entity.entity_id }}/tab/members?page={{ page - 1 }}" hx-target="#tab-body">Previous</a>{% endif %}
+  {% if d.members_offset + d.members|length < d.member_count %}<a class="btn small" href="#" hx-get="/entity/{{ d.entity.entity_id }}/tab/members?page={{ page + 1 }}" hx-target="#tab-body">Next</a>{% endif %}
+</div>
+</div>
+
+{% elif tab == "relationships" %}
+<div class="tab-body">
+  {% if not d.relationships and not d.relationship_candidates %}<div class="empty">No relationships, and no signals suggesting any.</div>{% endif %}
+  {% if d.relationships %}
+  <div class="section-title" style="padding-left:0">Relationships</div>
+  <div class="cards">
+  {% for r in d.relationships %}
+    <div class="card" style="display:flex;gap:8px;align-items:center">
+      {% if r.role == "subject" %}<span class="muted">This entity</span> <span class="chip tone-purple">{{ r.relationship.relation|replace('_', ' ') }}</span> {{ entity_link(r.other_id, r.other_label) }}
+      {% else %}{{ entity_link(r.other_id, r.other_label) }} <span class="chip tone-purple">{{ r.relationship.relation|replace('_', ' ') }}</span> <span class="muted">this entity</span>{% endif %}
+      <span style="margin-left:auto">{{ decision_link(r.relationship.basis_decision_id) }}</span>
+    </div>
+  {% endfor %}
+  </div>
+  {% endif %}
+  {% if d.relationship_candidates %}
+  <div class="section-title" style="padding-left:0">Possibly related <span class="light">a relationship signal, kept apart</span></div>
+  <div class="cards">
+  {% for c, label in d.relationship_candidates %}
+    {% set other = c.right_entity if c.left_entity == d.entity.entity_id else c.left_entity %}
+    <div class="card">
+      <div style="display:flex;gap:8px;align-items:center">{{ entity_link(other, label) }}
+        <span class="chip">{{ plural(c.pairs, 'pair') }}</span>{% for s in c.signals %}<span class="chip tone-sky">{{ s }}</span>{% endfor %}</div>
+      <div style="margin-top:8px"><a class="btn small" href="#" hx-get="/panel/candidate?left={{ c.left_entity }}&right={{ c.right_entity }}" hx-target="#panel-body" hx-boost="false">{{ icon("scale", 14) }} Decide</a></div>
+    </div>
+  {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+{% elif tab == "history" %}
+<div class="tab-body timeline">
+  {% for c in commits %}
+  <div class="tl-item">
+    <span class="tl-dot">{{ icon(c.lines[0][0] if c.lines else 'circle-dashed', 13) }}</span>
+    <div>
+      <div class="lines">
+      {% for ic, text, ref, name in c.lines %}
+        <div>{{ text }}{% if ref %} <a class="name-chip" href="/entity/{{ ref }}"><span>{{ name }}</span></a>{% endif %}</div>
+      {% endfor %}
+      </div>
+      <div class="refs">
+        <span class="chip">{{ c.actor.kind }}: {{ c.actor.id }}</span>
+        {% for dec in c.decisions[:3] %}{{ decision_link(dec) }}{% endfor %}
+        {% if c.decisions|length > 3 %}<span class="light">+{{ c.decisions|length - 3 }}</span>{% endif %}
+      </div>
+    </div>
+    <span class="when">seq {{ c.seq }}{% if c.last_seq != c.seq %}–{{ c.last_seq }}{% endif %} · {{ fmt(c.at) }}</span>
+  </div>
+  {% endfor %}
+</div>
+
+{% elif tab == "context" %}
+<div class="tab-body">
+  <div class="viewbar" style="padding:0;border:0;margin-bottom:8px;flex-wrap:wrap">
+    <span class="muted">What a language model would be given about this entity, at most</span>
+    {% for b in [1000, 2000, 4000, 8000] %}
+      <a class="filter {% if budget == b %}on{% endif %}" href="#" hx-get="/entity/{{ d.entity.entity_id }}/tab/context?budget={{ b }}" hx-target="#tab-body">{{ "{:,}".format(b) }}</a>
+    {% endfor %}
+    <span class="muted">characters.</span><span class="spacer"></span>
+    <span class="light">{{ "{:,}".format(text|length) }} used</span>
+    <button class="btn small" type="button" onclick="navigator.clipboard.writeText(document.getElementById('ctx').innerText)">Copy</button>
+  </div>
+  <pre class="context" id="ctx">{{ text }}</pre>
+</div>
+{% endif %}

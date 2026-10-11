@@ -1,0 +1,184 @@
+{
+ "comparisons": [
+  "comparison:name@4#dc817a816387",
+  "comparison:reg_id@1#e790f263c135",
+  "comparison:domain@1#44136fa355b3",
+  "comparison:location@2#e7a72b41f5c4",
+  "comparison:legal_form@1#44136fa355b3"
+ ],
+ "format": 1,
+ "model": {
+  "caps": {
+   "domain": {
+    "exact": 4.0
+   },
+   "name": {
+    "brand_only": 0.0,
+    "qualifier_differs": 0.0,
+    "token_subset": 0.0
+   }
+  },
+  "comparisons": [
+   "name",
+   "reg_id",
+   "domain",
+   "location",
+   "legal_form"
+  ],
+  "entity_type": "organization",
+  "lam": 0.5634766051003451,
+  "levels": {
+   "domain": [
+    "exact",
+    "else"
+   ],
+   "legal_form": [
+    "same",
+    "different"
+   ],
+   "location": [
+    "postal",
+    "city",
+    "city_other_postal",
+    "city_fuzzy",
+    "country_only",
+    "different_country"
+   ],
+   "name": [
+    "exact_key",
+    "number_differs",
+    "token_typo",
+    "token_subset",
+    "qualifier_differs",
+    "token_set_0.92",
+    "acronym",
+    "brand_only",
+    "else"
+   ],
+   "reg_id": [
+    "exact",
+    "else"
+   ]
+  },
+  "m": {
+   "domain": [
+    0.9764696605271044,
+    0.02353033947289568
+   ],
+   "legal_form": [
+    0.9978025885229886,
+    0.0021974114770111183
+   ],
+   "location": [
+    0.23272183558203147,
+    0.37219170864421364,
+    0.003768311844400287,
+    0.04450828414198188,
+    0.345809859787372,
+    0.001
+   ],
+   "name": [
+    0.6927522972355119,
+    0.001,
+    0.2392890783195831,
+    0.001,
+    0.05146260843468896,
+    0.001,
+    0.001,
+    0.005581075975678995,
+    0.006914940034536874
+   ],
+   "reg_id": [
+    0.9740032718098283,
+    0.02599672819017227
+   ]
+  },
+  "m_floor": 0.001,
+  "sessions": {
+   "acronym+name_key+rare_token+trigram": {
+    "blocked": [
+     "legal_form",
+     "name"
+    ],
+    "lam": 0.481706677425731,
+    "pairs": 43055
+   },
+   "domain": {
+    "blocked": [
+     "domain"
+    ],
+    "lam": 0.9966925300933105,
+    "pairs": 4719
+   },
+   "identifier": {
+    "blocked": [
+     "reg_id"
+    ],
+    "lam": 0.999999999,
+    "pairs": 2449
+   }
+  },
+  "tf": [
+   {
+    "comparison": "name",
+    "exact_level": 0,
+    "feature": "name.tf_key",
+    "fuzzy_levels": [
+     2,
+     5
+    ]
+   },
+   {
+    "boost": false,
+    "comparison": "location",
+    "count": "observation",
+    "exact_level": 0,
+    "feature": "postal",
+    "fuzzy_levels": []
+   }
+  ],
+  "u": {
+   "domain": [
+    0.0007075749832933685,
+    0.9992924250167067
+   ],
+   "legal_form": [
+    0.14304861197596977,
+    0.8569513880240303
+   ],
+   "location": [
+    0.00013876814699628184,
+    0.019386726418598198,
+    0.006313950688330823,
+    0.002542722222902458,
+    0.2271879451294421,
+    0.7444298873937302
+   ],
+   "name": [
+    0.0010499685009449716,
+    3.3332333363332434e-06,
+    0.0003233236336243246,
+    3.3332333363332434e-06,
+    0.049485182111203334,
+    6.666466672666487e-06,
+    3.3332333363332434e-06,
+    7.333113339933136e-05,
+    0.9490515284541464
+   ],
+   "reg_id": [
+    0.0025894157630684577,
+    0.9974105842369315
+   ]
+  },
+  "unlearned": []
+ },
+ "model_version": "starter.1",
+ "random_pairs": 300000,
+ "trained_on": {
+  "generator": "organizations",
+  "orgs": 4000,
+  "records": 8624,
+  "seed": 20261008,
+  "version": "1"
+ }
+}

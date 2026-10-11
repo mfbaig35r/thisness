@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import state_chip, avatar %}
+{% set active = "type:" ~ entity_type %}
+{% block title %}{{ type_title(entity_type) }}{% endblock %}
+{% block topbar %}<span class="title">{{ icon(TYPE_ICONS.get(entity_type, 'circle-dashed')) }} {{ type_title(entity_type) }}</span>{% endblock %}
+{% block content %}
+<div class="viewbar">
+  <span class="view">{{ icon("list-check") }} {% if state %}{{ state|capitalize }}{% else %}All{% endif %} <span class="light">· {{ "{:,}".format(listing.total) }}</span></span>
+  <a class="filter {% if state == 'active' %}on{% endif %}" href="?state={{ '' if state == 'active' else 'active' }}&q={{ q }}">Active <span class="light">{{ counts.get('active', 0) }}</span></a>
+  <a class="filter {% if state == 'provisional' %}on{% endif %}" href="?state={{ '' if state == 'provisional' else 'provisional' }}&q={{ q }}">Provisional <span class="light">{{ counts.get('provisional', 0) }}</span></a>
+  <span class="spacer"></span>
+  <form class="search-box" method="get" action="">
+    {{ icon("search", 14) }}<input type="search" name="q" value="{{ q }}" placeholder="Filter by name or id">
+    {% if state %}<input type="hidden" name="state" value="{{ state }}">{% endif %}
+  </form>
+</div>
+{% if listing.rows %}
+<table class="records">
+  <thead><tr>
+    <th>{{ icon("id", 14) }} Name</th>
+    <th>{{ icon("circle-dashed", 14) }} State</th>
+    <th class="num">{{ icon("users", 14) }} Observations</th>
+    <th class="num">{{ icon("database", 14) }} Sources</th>
+    <th>{{ icon("list-check", 14) }} Open reviews</th>
+    <th>{{ icon("hash", 14) }} Id</th>
+  </tr></thead>
+  <tbody>
+  {% for r in listing.rows %}
+    <tr hx-get="/panel/entity/{{ r.entity_id }}" hx-target="#panel-body" hx-boost="false">
+      <td><span class="name-chip">{{ avatar(r.name or r.entity_id) }}<span>{{ r.name or r.entity_id }}</span></span></td>
+      <td>{{ state_chip(r.state) }}</td>
+      <td class="num">{{ "{:,}".format(r.observations) }}</td>
+      <td class="num">{{ r.sources }}</td>
+      <td>{% if r.open_reviews %}<span class="chip tone-amber">{{ plural(r.open_reviews, 'review') }}</span>{% endif %}</td>
+      <td class="mono light">{{ r.entity_id }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<div class="pager">
+  <span>{{ listing.offset + 1 }}–{{ listing.offset + listing.rows|length }} of {{ "{:,}".format(listing.total) }}</span>
+  {% if page > 1 %}<a class="btn small" href="?page={{ page - 1 }}&state={{ state }}&q={{ q }}">Previous</a>{% endif %}
+  {% if listing.offset + listing.rows|length < listing.total %}<a class="btn small" href="?page={{ page + 1 }}&state={{ state }}&q={{ q }}">Next</a>{% endif %}
+</div>
+{% else %}
+<div class="empty">No {{ type_title(entity_type)|lower }}{% if q %} match “{{ q }}”{% endif %}.</div>
+{% endif %}
+{% endblock %}

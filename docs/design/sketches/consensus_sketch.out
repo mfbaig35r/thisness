@@ -1,0 +1,76 @@
+
+=== Scenario 1: Amazon / AWS
+  ATTACH              [Amazon.com, Inc. [active], Amazon, Amazon.com Inc., Amazon - 008712]  -> into Amazon.com, Inc. [active]
+  CREATE_ENTITY       [Amazon Web Services, Amazon Web Services LLC, AWS, AWS 8721]
+  CREATE_ENTITY       [Amazon Bank]
+  BOUNDARY_REVIEW     cluster 0 <-> 1: 8 contested pairs, e.g. Amazon.com, Inc. [active] / AWS
+  (same result under 50 shuffles of proposal order)
+  AWS / Amazon Web Services: raw votes 2/2, echoes 1, label convergence True
+  Amazon / Amazon Web Services: raw votes 1/3
+
+=== Scenario 1 without verify, min_votes=2 (default)
+  NO_CHANGE           [Amazon.com, Inc. [active]]  (3 unverified links pending)
+  CREATE_PROVISIONAL  [Amazon]  (3 unverified links pending)
+  CREATE_PROVISIONAL  [Amazon.com Inc.]  (3 unverified links pending)
+  CREATE_PROVISIONAL  [Amazon - 008712]  (3 unverified links pending)
+  CREATE_PROVISIONAL  [Amazon Web Services]  (3 unverified links pending)
+  CREATE_PROVISIONAL  [Amazon Web Services LLC]  (3 unverified links pending)
+  CREATE_PROVISIONAL  [AWS]  (3 unverified links pending)
+  CREATE_PROVISIONAL  [AWS 8721]  (3 unverified links pending)
+  CREATE_ENTITY       [Amazon Bank]
+  (same result under 50 shuffles of proposal order)
+
+=== Scenario 1 without verify, min_votes=1
+  ATTACH              [Amazon.com, Inc. [active], Amazon, Amazon.com Inc., Amazon - 008712]  -> into Amazon.com, Inc. [active]
+  CREATE_PROVISIONAL  [Amazon Web Services, Amazon Web Services LLC]  (4 unverified links pending)
+  CREATE_PROVISIONAL  [AWS, AWS 8721]  (4 unverified links pending)
+  CREATE_ENTITY       [Amazon Bank]
+  (same result under 50 shuffles of proposal order)
+
+=== Scenario 2: chain through overlapping batches
+  REVIEW_CLUSTER      [Apple Inc., Apple, Apple Bank, Apple Bank NA]
+      conflict: Apple Inc. / Apple Bank (negative)
+      suggested cut: [Apple, Apple Bank, Apple Bank NA] | [Apple Inc.]
+  (same result under 50 shuffles of proposal order)
+
+=== Scenario 3: one strong edge joins two pairs
+  REVIEW_CLUSTER      [J. Smith (Acme), John Smith (Acme), John Smith (Globex), Jon Smith (Globex)]
+      bridge: John Smith (Acme) / John Smith (Globex) splits (2, 2)
+  (same result under 50 shuffles of proposal order)
+
+=== Scenario 4: next run, provisional entities from scenario 1
+  MERGE_PROVISIONAL   [Amazon.com, Inc. [active], Amazon [provisional], Amazon.com Inc. [provisional], Amazon - 008712 [provisional], AMAZON.COM INC]  -> into Amazon.com, Inc. [active]
+  PROPOSE_MERGE       [Amazon Web Services LLC [active], AWS [active], AWS 8721 [provisional]]
+  (same result under 50 shuffles of proposal order)
+
+=== Scenario 5: verify contradicts an existing entity
+  NO_CHANGE           [Acme Corp [active]]
+  SPLIT_REVIEW        Acme Corp [active] (entity unchanged)
+      suggested: [Acme Corp, ACME Corporation] | [Acme Bank]
+  (same result under 50 shuffles of proposal order)
+
+=== Scenario 6: large cluster, verify batch of 12 (incl. one distractor)
+  variant collapse: 300 raw names -> 30 representatives
+
+=== Scenario 6a: plain partition into sub-batches
+  CREATE_ENTITY       [Amazon Bank]
+  CREATE_PROVISIONAL  [Amazon, Amazon - 1001, Amazon - 1002, ... (11 members)]  (209 unverified links pending)
+  CREATE_PROVISIONAL  [Amazon - 1011, Amazon - 1012, Amazon - 1013, ... (11 members)]  (209 unverified links pending)
+  CREATE_PROVISIONAL  [Amazon.com - 1007, Amazon.com - 1008, Amazon.com - 1009, ... (8 members)]  (176 unverified links pending)
+  (same result under 10 shuffles of proposal order)
+
+=== Scenario 6b: one shared anchor, articulation check off
+  CREATE_ENTITY       [Amazon Bank]
+  CREATE_ENTITY       [Amazon, Amazon - 1001, Amazon - 1002, ... (30 members)]
+  (same result under 10 shuffles of proposal order)
+
+=== Scenario 6c: one shared anchor
+  CREATE_ENTITY       [Amazon Bank]
+  REVIEW_CLUSTER      [Amazon, Amazon - 1001, Amazon - 1002, ... (30 members)]
+      articulation: Amazon holds together parts (10, 10, 9)
+  (same result under 10 shuffles of proposal order)
+
+=== Scenario 6d: two shared anchors
+  CREATE_ENTITY       [Amazon Bank]
+  CREATE_ENTITY       [Amazon, Amazon - 1001, Amazon - 1002, ... (30 members)]
+  (same result under 10 shuffles of proposal order)

@@ -1,0 +1,27 @@
+{% macro state_chip(state) -%}
+<span class="chip tone-{{ STATE_TONES.get(state, 'gray') }}">{{ state }}</span>
+{%- endmacro %}
+
+{% macro verdict_chip(verdict) -%}
+<span class="chip tone-{{ VERDICT_TONES.get(verdict, 'gray') }}">{{ verdict|replace('_', ' ')|lower }}</span>
+{%- endmacro %}
+
+{% macro avatar(label, cls="") -%}
+<span class="avatar {{ cls }}">{{ (label or "?")[:1]|upper }}</span>
+{%- endmacro %}
+
+{% macro entity_link(entity_id, name) -%}
+<a class="name-chip" href="/entity/{{ entity_id }}">{{ avatar(name) }}<span>{{ name }}</span></a>
+{%- endmacro %}
+
+{% macro panel_link(kind, id, label) -%}
+<a class="name-chip" href="#" hx-get="/panel/{{ kind }}/{{ id }}" hx-target="#panel-body" hx-boost="false"><span>{{ label }}</span></a>
+{%- endmacro %}
+
+{% macro decision_link(id) -%}
+<a class="chip round mono" href="#" hx-get="/panel/decision/{{ id }}" hx-target="#panel-body" hx-boost="false">{{ icon("scale", 12) }} {{ id[:10] }}…</a>
+{%- endmacro %}
+
+{% macro weight(w) -%}
+<span class="weight {{ 'pos' if w > 0 else 'neg' if w < 0 else '' }}">{{ "%+.1f"|format(w) }}</span>
+{%- endmacro %}

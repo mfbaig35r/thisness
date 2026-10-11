@@ -1,0 +1,41 @@
+{% from "_macros.html" import verdict_chip, weight %}
+{% set dec = x.decision %}
+{% set head %}{{ icon("scale") }} <span class="title">{{ dec.decision_type|capitalize }} decision</span>{% if dec.verdict %}{{ verdict_chip(dec.verdict) }}{% endif %}{% if dec.outcome %}<span class="chip tone-blue">{{ dec.outcome|replace('_', ' ')|lower }}</span>{% endif %}{% endset %}
+{% include "_panel_head.html" %}
+<div class="panel-body">
+  <div class="section-title">Decision</div>
+  <div class="field"><span class="label">{{ icon("user", 14) }} by</span><span class="value">{{ dec.actor.kind }}: {{ dec.actor.id }}</span></div>
+  {% if dec.reason %}<div class="field"><span class="label">{{ icon("message-question", 14) }} reason</span><span class="value">{{ dec.reason }}</span></div>{% endif %}
+  {% if dec.resolution %}<div class="field"><span class="label">{{ icon("list-check", 14) }} answer</span><span class="value">{{ dec.resolution }}{% if dec.relation %}: {{ dec.relation }}{% endif %}</span></div>{% endif %}
+  {% if dec.rationale %}<div class="field"><span class="label">{{ icon("message-question", 14) }} rationale</span><span class="value">{{ dec.rationale }}</span></div>{% endif %}
+  {% if dec.reason_codes %}<div class="field"><span class="label">{{ icon("hash", 14) }} reasons</span><span class="value">{% for c in dec.reason_codes %}<span class="chip">{{ c|replace('_', ' ')|lower }}</span> {% endfor %}</span></div>{% endif %}
+  {% if dec.invocation_id %}<div class="field"><span class="label">{{ icon("sparkles", 14) }} model call</span><span class="value"><a href="#" class="mono" hx-get="/panel/invocation/{{ dec.invocation_id }}" hx-target="#panel-body">{{ dec.invocation_id }}</a></span></div>{% endif %}
+  {% if dec.recommendation_id %}<div class="field"><span class="label">{{ icon("sparkles", 14) }} was shown</span><span class="value"><a href="#" class="mono" hx-get="/panel/decision/{{ dec.recommendation_id }}" hx-target="#panel-body">{{ dec.recommendation_id }}</a></span></div>{% endif %}
+  {% if dec.left_id %}<div class="field"><span class="label">{{ icon("arrows-join", 14) }} pair</span><span class="value">
+    <a href="#" hx-get="/panel/observation/{{ dec.left_id }}" hx-target="#panel-body" class="mono">{{ dec.left_id }}</a><br>
+    <a href="#" hx-get="/panel/observation/{{ dec.right_id }}" hx-target="#panel-body" class="mono">{{ dec.right_id }}</a></span></div>{% endif %}
+  {% for s in dec.scores or [] %}
+  <div class="field"><span class="label">{{ icon("chart-dots", 14) }} {{ s.kind|replace('_', ' ') }}</span><span class="value num">{{ fmt(s.value) }}</span></div>
+  {% endfor %}
+  {% if dec.members %}<div class="field"><span class="label">{{ icon("users", 14) }} members</span><span class="value">{{ plural(dec.members|length, 'node') }}</span></div>{% endif %}
+  <div class="field"><span class="label">{{ icon("clock", 14) }} at</span><span class="value">{{ dec.created_at[:16]|replace('T', ' ') }}</span></div>
+  <div class="field"><span class="label">{{ icon("hash", 14) }} id</span><span class="value mono light">{{ dec.decision_id }}</span></div>
+  {% if x.evidence %}
+  <div class="section-title">Evidence</div>
+  <table class="records evidence">
+    <thead><tr><th>Comparison</th><th>Level</th><th class="num">Bits</th><th>Inputs</th></tr></thead>
+    <tbody>{% for e in x.evidence %}
+      <tr><td>{{ e.attribute or e.kind }}</td><td><span class="chip {{ 'tone-green' if e.direction == 'supports' else 'tone-red' if e.direction == 'contradicts' else '' }}">{{ e.level or e.value }}</span></td>
+        <td class="num">{% if e.score %}{{ weight(e.score.value) }}{% endif %}</td>
+        <td class="muted">{% if e.kind == 'llm_adjudication' %}{{ (e.value or {}).get('rationale') or '' }}{% else %}{% for k, v in e.inputs.items() %}{{ k }}: {{ fmt(v) }}<br>{% endfor %}{% endif %}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+  {% endif %}
+  {% if x.edges %}
+  <div class="section-title">Pairs behind it <span class="light">{{ x.edges|length }}</span></div>
+  {% for edge in x.edges %}{% set p = edge.decision %}
+    <div class="field"><span class="label">{{ verdict_chip(p.verdict) }}</span><span class="value"><a href="#" hx-get="/panel/decision/{{ p.decision_id }}" hx-target="#panel-body" class="mono">{{ p.left_id[:12] }}… · {{ p.right_id[:12] }}…</a>
+      {% for s in p.scores if s.kind == 'fellegi_sunter_weight' %}{{ weight(s.value) }}{% endfor %}</span></div>
+  {% endfor %}
+  {% endif %}
+</div>

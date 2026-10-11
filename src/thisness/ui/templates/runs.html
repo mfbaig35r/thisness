@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% set active = "runs" %}
+{% block title %}Runs{% endblock %}
+{% block topbar %}<span class="title">{{ icon("player-play") }} Runs</span>{% endblock %}
+{% block content %}
+{% if runs %}
+<table class="records">
+  <thead><tr><th>{{ icon("hash", 14) }} Run</th><th>{{ icon("building", 14) }} Type</th><th>{{ icon("circle-dashed", 14) }} Status</th>
+    <th class="num">{{ icon("users", 14) }} Scope</th><th class="num">{{ icon("history", 14) }} Ledger events</th>
+    <th>{{ icon("git-branch", 14) }} Read at → committed</th><th>{{ icon("clock", 14) }} Created</th><th></th></tr></thead>
+  <tbody>{% for r in runs %}
+    <tr><td class="mono">{{ r.run_id }}</td><td>{{ r.entity_type }}</td>
+      <td><span class="chip {{ 'tone-green' if r.status == 'committed' else 'tone-amber' if r.status == 'proposed' else 'tone-gray' }}">{{ r.status }}</span></td>
+      <td class="num">{{ "{:,}".format(r.scope) }}</td><td class="num">{{ "{:,}".format(r.events) }}</td>
+      <td class="muted">seq {{ r.base_seq }}{% if r.committed_seq %} → {{ r.committed_seq }}{% endif %}</td>
+      <td class="light">{{ fmt(r.created_at) }}</td><td><a class="light" href="/llm?run={{ r.run_id }}">model calls</a></td></tr>
+  {% endfor %}</tbody>
+</table>
+{% else %}<div class="empty">No runs yet. <span class="mono">thisness resolve</span> starts one.</div>{% endif %}
+{% endblock %}

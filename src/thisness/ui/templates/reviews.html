@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% set active = "reviews" %}
+{% block title %}Review queue{% endblock %}
+{% block topbar %}<span class="title">{{ icon("list-check") }} Review queue</span>{% endblock %}
+{% block content %}
+<div class="viewbar">
+  <span class="view">{{ icon("list-check") }} Open <span class="light">· {{ summaries|length }}</span></span>
+  <a class="filter {% if not kind %}on{% endif %}" href="/reviews">All</a>
+  {% for k, n in kinds.most_common() %}<a class="filter {% if kind == k %}on{% endif %}" href="?kind={{ k }}">{{ k|capitalize }} <span class="light">{{ n }}</span></a>{% endfor %}
+  <span class="spacer"></span><span class="light">Most observations affected first</span>
+</div>
+{% if summaries %}
+<table class="records">
+  <thead><tr><th>{{ icon("message-question", 14) }} Question</th><th>{{ icon("circle-dashed", 14) }} Kind</th>
+    <th class="num">{{ icon("users", 14) }} Observations affected</th><th class="num">{{ icon("building", 14) }} Largest entity</th>
+    <th class="num">{{ icon("file-text", 14) }} Records shown</th><th>{{ icon("sparkles", 14) }} Suggestion</th><th>{{ icon("clock", 14) }} Opened</th></tr></thead>
+  <tbody>
+  {% for s in summaries %}
+    <tr onclick="location.href='/reviews/{{ s.review.review_id }}'">
+      <td><a href="/reviews/{{ s.review.review_id }}">{{ s.question }}</a></td>
+      <td><span class="chip {{ 'tone-purple' if s.review.kind == 'cluster' else 'tone-blue' }}">{{ s.review.kind }}</span></td>
+      <td class="num">{{ "{:,}".format(s.observations) }}</td>
+      <td class="num">{{ "{:,}".format(s.largest_entity) }}</td>
+      <td class="num">{{ s.review.members|length }}</td>
+      <td>{% set sg = suggestion.get(s.review.review_id) %}{% if sg %}<span class="chip {{ 'tone-gray' if sg == 'unsure' else 'tone-purple' }}">{{ sg }}</span>{% else %}<span class="light">none</span>{% endif %}</td>
+      <td class="light">seq {{ s.review.opened_seq }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<div class="empty">{{ icon("circle-check", 24) }}<p>Nothing to review.</p></div>{% endif %}
+{% endblock %}

@@ -1,0 +1,22 @@
+{% from "_macros.html" import decision_link %}
+{% set head %}{{ icon("file-text") }} <span class="title">{{ (o.attributes or {}).get('name') or o.observation_id }}</span><span class="chip">observation</span>{% endset %}
+{% include "_panel_head.html" %}
+<div class="panel-body">
+  <div class="section-title">Source</div>
+  <div class="field"><span class="label">{{ icon("database", 14) }} type</span><span class="value">{{ o.source.type }}</span></div>
+  <div class="field"><span class="label">{{ icon("hash", 14) }} id</span><span class="value">{{ o.source.id }}</span></div>
+  {% for k, v in o.source.locator.items() %}<div class="field"><span class="label">{{ icon("map-pin", 14) }} {{ k }}</span><span class="value">{{ fmt(v) }}</span></div>{% endfor %}
+  <div class="field"><span class="label">{{ icon("clock", 14) }} ingested</span><span class="value">{{ fmt(o.ingested_at) }}</span></div>
+  <div class="section-title">Attributes</div>
+  {% if o.attributes is none %}<div class="field"><span></span><span class="light">Redacted {{ fmt(o.redacted_at) }}</span></div>{% endif %}
+  {% for k, v in (o.attributes or {}).items() %}
+  <div class="field"><span class="label">{{ icon(ATTRIBUTE_ICONS.get(k, 'circle-dashed'), 14) }} {{ k|replace('_', ' ') }}</span><span class="value">{{ fmt(v) }}</span></div>
+  {% endfor %}
+  <div class="section-title">Identity</div>
+  <div class="field"><span class="label">{{ icon("building", 14) }} entity</span><span class="value">
+    {% if entity_id %}<a class="name-chip" href="/entity/{{ entity_id }}" hx-boost="true"><span>{{ entity_name }}</span></a>{% else %}<span class="light">unresolved</span>{% endif %}</span></div>
+  {% for e in history if e.event_type.value.startswith('MEMBERSHIP') %}
+  <div class="field"><span class="label light">seq {{ e.seq }}</span><span class="value">{{ 'joined' if e.event_type.value == 'MEMBERSHIP_ACCEPTED' else 'left' }} <span class="mono light">{{ e.entity_id }}</span> {% if e.decision_id %}{{ decision_link(e.decision_id) }}{% endif %}</span></div>
+  {% endfor %}
+  <div class="field"><span class="label">{{ icon("hash", 14) }} id</span><span class="value mono light">{{ o.observation_id }}</span></div>
+</div>

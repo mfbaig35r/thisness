@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% set active = "llm" %}
+{% block title %}Model calls{% endblock %}
+{% block topbar %}<span class="title">{{ icon("sparkles") }} Model calls</span>{% if run %}<span class="crumb-sep">/</span><span class="mono light">{{ run }}</span> <a class="light" href="/llm">all</a>{% endif %}{% endblock %}
+{% block content %}
+<div class="grid-2">
+  <div class="stat"><div class="muted">Calls</div><div class="v num">{{ "{:,}".format(totals.calls) }}</div>
+    <div class="light">{% for s, n in totals.status.most_common() %}{{ s }} {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}</div></div>
+  <div class="stat"><div class="muted">Tokens</div><div class="v num">{{ "{:,}".format(totals.input + totals.output) }}</div>
+    <div class="light">{{ "{:,}".format(totals.input) }} in · {{ "{:,}".format(totals.output) }} out</div></div>
+  <div class="stat"><div class="muted">Cost</div><div class="v num">${{ "%.4f"|format(totals.cost) }}</div>
+    <div class="light">{% if totals.priced %}at list prices{% else %}some models have no listed price{% endif %}</div></div>
+</div>
+{% if calls %}
+<table class="records">
+  <thead><tr><th>{{ icon("clock", 14) }} When</th><th>{{ icon("sparkles", 14) }} Model</th><th>{{ icon("file-text", 14) }} Prompt</th>
+    <th>{{ icon("circle-dashed", 14) }} Status</th><th class="num">Tokens</th><th class="num">Cost</th><th class="num">ms</th><th>{{ icon("player-play", 14) }} Run</th></tr></thead>
+  <tbody>{% for c in calls %}
+    <tr hx-get="/panel/invocation/{{ c.invocation_id }}" hx-target="#panel-body" hx-boost="false">
+      <td class="light">{{ fmt(c.created_at) }}</td>
+      <td>{{ c.model }} <span class="light">{{ c.provider }}</span></td>
+      <td class="mono light">{{ c.prompt_ref.split(':', 1)[1].split('#')[0] }}</td>
+      <td><span class="chip {{ 'tone-green' if c.status == 'ok' else 'tone-blue' if c.status == 'cached' else 'tone-red' }}">{{ c.status }}</span></td>
+      <td class="num">{{ "{:,}".format((c.input_tokens or 0) + (c.output_tokens or 0)) }}</td>
+      <td class="num">{% if c.cost_usd is not none %}${{ "%.4f"|format(c.cost_usd) }}{% endif %}</td>
+      <td class="num light">{{ c.latency_ms or "" }}</td>
+      <td class="mono light">{% if c.run_id %}<a href="/llm?run={{ c.run_id }}">{{ c.run_id[:14] }}…</a>{% endif %}</td>
+    </tr>
+  {% endfor %}</tbody>
+</table>
+{% else %}<div class="empty">No model calls yet.</div>{% endif %}
+{% endblock %}

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Thisness{% endblock %} · Thisness</title>
+  <link rel="stylesheet" href="/static/theme.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/vendor/htmx.min.js" defer></script>
+  <script src="/static/vendor/Sortable.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body hx-boost="true">
+<div class="shell">
+  <nav class="sidebar">
+    <div class="workspace"><span class="mark">T</span> Thisness <span class="store">{{ store_name }}</span></div>
+    <button class="nav-search" type="button" onclick="openMenu()">{{ icon("search") }} Search <kbd>⌘K</kbd></button>
+    <div class="nav-section">Entities</div>
+    {% for t, n in nav.types %}
+      <a class="nav-item {% if active == 'type:' ~ t %}active{% endif %}" href="/entities/{{ t }}">
+        {{ icon(TYPE_ICONS.get(t, 'circle-dashed')) }} {{ type_title(t) }} <span class="count num">{{ "{:,}".format(n) }}</span></a>
+    {% endfor %}
+    <div class="nav-section">Decide</div>
+    <a class="nav-item {% if active == 'reviews' %}active{% endif %}" href="/reviews">{{ icon("list-check") }} Review queue
+      {% if nav.open_reviews %}<span class="badge">{{ nav.open_reviews }}</span>{% endif %}</a>
+    <a class="nav-item {% if active == 'relationships' %}active{% endif %}" href="/relationships">{{ icon("link") }} Possible relationships
+      {% if nav.candidates %}<span class="count num">{{ nav.candidates }}</span>{% endif %}</a>
+    <div class="nav-section">Store</div>
+    <a class="nav-item {% if active == 'runs' %}active{% endif %}" href="/runs">{{ icon("player-play") }} Runs</a>
+    <a class="nav-item {% if active == 'llm' %}active{% endif %}" href="/llm">{{ icon("sparkles") }} Model calls</a>
+    {% for t, _ in nav.types %}
+      <a class="nav-item {% if active == 'model:' ~ t %}active{% endif %}" href="/model/{{ t }}">{{ icon("chart-dots") }} {{ t|capitalize }} model</a>
+    {% endfor %}
+  </nav>
+  <main class="main">
+    <header class="topbar">{% block topbar %}{% endblock %}</header>
+    <div class="content">{% block content %}{% endblock %}</div>
+  </main>
+</div>
+
+<aside class="panel" id="panel" hx-boost="false">
+  <div id="panel-body" style="display:contents"></div>
+</aside>
+
+<dialog class="cmdk" id="cmdk" hx-boost="false">
+  <div class="cmdk-input">{{ icon("search", 18, "muted") }}
+    <input type="search" name="q" placeholder="Search entities by name, or paste any id" autocomplete="off"
+           hx-get="/search" hx-trigger="input changed delay:120ms" hx-target="#cmdk-results">
+    <kbd>esc</kbd></div>
+  <div class="cmdk-results" id="cmdk-results"><div class="empty">Names, or ids such as org_…, obs_…, rev_…, dec_…</div></div>
+</dialog>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{% from "_macros.html" import avatar %}
+{% set head %}{{ icon("link") }} <span class="title">Related, or the same?</span>{% endset %}
+{% include "_panel_head.html" %}
+<div class="panel-body">
+  <div class="prose" style="padding-top:12px">These entities carry a relationship signal ({{ c.signals|join(', ')|replace('_', ' ') }}, {{ plural(c.pairs, 'pair') }} of records) and were kept apart.</div>
+  <div class="compare" style="margin-top:12px">
+    <div></div>
+    {% for d in [left, right] %}<div class="head"><a class="name-chip" href="/entity/{{ d.entity.entity_id }}" hx-boost="true">{{ avatar(d.label) }}<span>{{ d.label }}</span></a><div class="light">{{ plural(d.member_count, 'observation') }}</div></div>{% endfor %}
+    {% for a in attributes %}
+      <div class="label">{{ icon(ATTRIBUTE_ICONS.get(a, 'circle-dashed'), 14) }} {{ a|replace('_', ' ') }}</div>
+      {% for d in [left, right] %}{% set s = d.attributes|selectattr('attribute', 'equalto', a)|first %}<div>{% if s %}{{ fmt(s.canonical if s.canonical is not none else s.values[0].value) }}{% else %}<span class="light">none</span>{% endif %}</div>{% endfor %}
+    {% endfor %}
+  </div>
+  <form class="panel-form" hx-post="/relationships/decide" hx-target="#candidate-error">
+    <input type="hidden" name="left" value="{{ c.left_entity }}"><input type="hidden" name="right" value="{{ c.right_entity }}">
+    <input type="hidden" name="evidence" value="{{ c.evidence_ids|join(',') }}">
+    <input type="text" name="reason" placeholder="Reason (stored with the decision)" required>
+    <div class="row"><select name="relation">{% for r in relations %}<option value="{{ r }}">{{ left.label }} {{ r|replace('_', ' ') }} {{ right.label }}</option>{% endfor %}</select>
+      <button class="btn primary" name="action" value="relate">{{ icon("link", 14) }} Relate</button></div>
+    <div class="row"><button class="btn" name="action" value="merge" style="flex:1;justify-content:center">{{ icon("git-merge", 14) }} They are the same entity: merge</button></div>
+    <div id="candidate-error"></div>
+  </form>
+</div>

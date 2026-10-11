@@ -1,0 +1,189 @@
+{
+ "comparisons": [
+  "comparison:taxon_name@1#b4c92d67427e",
+  "comparison:taxon_authorship@2#248180c0189c",
+  "comparison:taxon_rank@1#44136fa355b3",
+  "comparison:taxon_assertion@3#6a02e302bb2a",
+  "comparison:taxon_vernacular@1#44136fa355b3",
+  "comparison:taxon_family@1#44136fa355b3",
+  "comparison:taxon_name_ident@1#6e4752cbd8e0"
+ ],
+ "format": 1,
+ "model": {
+  "caps": {
+   "authorship": {
+    "homonym": -8.0
+   },
+   "name": {
+    "same_genus": 0.0
+   },
+   "vernacular": {
+    "exact": 2.0
+   }
+  },
+  "comparisons": [
+   "name",
+   "authorship",
+   "rank",
+   "assertion",
+   "vernacular",
+   "family",
+   "ident"
+  ],
+  "entity_type": "taxon",
+  "lam": 0.9464729677214972,
+  "levels": {
+   "assertion": [
+    "reference_same",
+    "asserted_same",
+    "asserted_different"
+   ],
+   "authorship": [
+    "same",
+    "basionym_match",
+    "compatible",
+    "homonym",
+    "different"
+   ],
+   "family": [
+    "same",
+    "different"
+   ],
+   "ident": [
+    "exact",
+    "else"
+   ],
+   "name": [
+    "exact",
+    "gender_variant",
+    "abbreviated_genus",
+    "fuzzy",
+    "recombination",
+    "same_genus",
+    "different"
+   ],
+   "rank": [
+    "same",
+    "different"
+   ],
+   "vernacular": [
+    "exact",
+    "else"
+   ]
+  },
+  "m": {
+   "assertion": [
+    0.834235900989513,
+    0.001,
+    0.1647640990104868
+   ],
+   "authorship": [
+    0.4091675512991026,
+    0.20348484472189451,
+    0.01649389268385195,
+    0.017178020894771,
+    0.35367569040037977
+   ],
+   "family": [
+    0.999,
+    0.001
+   ],
+   "ident": [
+    0.001,
+    0.999
+   ],
+   "name": [
+    0.1927488843405297,
+    0.001,
+    0.001,
+    0.006459114493981555,
+    0.07407936093758134,
+    0.5202928050251445,
+    0.20441983520276313
+   ],
+   "rank": [
+    0.5331184698466952,
+    0.46688153015330464
+   ],
+   "vernacular": [
+    0.5,
+    0.5
+   ]
+  },
+  "m_floor": 0.001,
+  "sessions": {
+   "accepted+asserted": {
+    "blocked": [
+     "assertion"
+    ],
+    "lam": 0.9999999989041445,
+    "pairs": 22410
+   },
+   "canonical+epithet_key+initial_key+stem_key+trigram": {
+    "blocked": [
+     "name"
+    ],
+    "lam": 0.6128920170191595,
+    "pairs": 46030
+   }
+  },
+  "tf": null,
+  "u": {
+   "assertion": [
+    0.001909988432464423,
+    1.3450622763833966e-05,
+    0.9980765609447717
+   ],
+   "authorship": [
+    0.04079415846961559,
+    0.009977269527085471,
+    0.023836823366121536,
+    6.034638826866212e-05,
+    0.9253314022489088
+   ],
+   "family": [
+    0.6357361034487399,
+    0.3642638965512601
+   ],
+   "ident": [
+    1.3455871469515723e-05,
+    0.9999865441285305
+   ],
+   "name": [
+    0.00013666347785218344,
+    6.666511114740656e-06,
+    1.3333022229481311e-05,
+    3.999906668844394e-05,
+    0.00010333092227848016,
+    0.2338978757162333,
+    0.7658021312836034
+   ],
+   "rank": [
+    0.46594369679487824,
+    0.5340563032051218
+   ],
+   "vernacular": [
+    0.5,
+    0.5
+   ]
+  },
+  "unlearned": []
+ },
+ "model_version": "starter.1",
+ "random_pairs": 300000,
+ "trained_on": {
+  "authorities": [
+   "wfo"
+  ],
+  "dataset": "World Flora Online Plant List 2026-06",
+  "families": [
+   "Ranunculaceae",
+   "Ericaceae"
+  ],
+  "generator": "wfo",
+  "records": 11991,
+  "seed": 20261008,
+  "taxa": 2500,
+  "version": "1"
+ }
+}

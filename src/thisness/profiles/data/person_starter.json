@@ -1,0 +1,240 @@
+{
+ "comparisons": [
+  "comparison:person_name@1#cdb98e0019e2",
+  "comparison:person_email@1#44136fa355b3",
+  "comparison:person_phone@1#44136fa355b3",
+  "comparison:date_of_birth@1#72c37f23ba82",
+  "comparison:employer@1#44136fa355b3",
+  "comparison:address@1#44136fa355b3",
+  "comparison:location@2#e7a72b41f5c4",
+  "comparison:person_ident@1#e790f263c135"
+ ],
+ "format": 1,
+ "model": {
+  "caps": {
+   "address": {
+    "exact": 3.0
+   },
+   "employer": {
+    "exact": 2.0
+   },
+   "name": {
+    "family_only": -6.0,
+    "middle_conflict": -4.0
+   },
+   "phone": {
+    "exact": 4.0
+   }
+  },
+  "comparisons": [
+   "name",
+   "email",
+   "phone",
+   "date_of_birth",
+   "employer",
+   "address",
+   "location",
+   "ident"
+  ],
+  "entity_type": "person",
+  "lam": 0.7293370079313584,
+  "levels": {
+   "address": [
+    "exact",
+    "else"
+   ],
+   "date_of_birth": [
+    "exact",
+    "transposed",
+    "year_month",
+    "year",
+    "different"
+   ],
+   "email": [
+    "exact",
+    "else"
+   ],
+   "employer": [
+    "exact",
+    "else"
+   ],
+   "ident": [
+    "exact",
+    "else"
+   ],
+   "location": [
+    "postal",
+    "city",
+    "city_other_postal",
+    "city_fuzzy",
+    "country_only",
+    "different_country"
+   ],
+   "name": [
+    "exact",
+    "given_family",
+    "alias",
+    "initial",
+    "fuzzy",
+    "middle_conflict",
+    "given_only",
+    "family_only",
+    "else"
+   ],
+   "phone": [
+    "exact",
+    "else"
+   ]
+  },
+  "m": {
+   "address": [
+    0.9023006741061491,
+    0.09769932589385101
+   ],
+   "date_of_birth": [
+    0.7254585897434936,
+    0.035285783471103366,
+    0.2152066811379611,
+    0.001,
+    0.023048945647441605
+   ],
+   "email": [
+    0.9752480381789548,
+    0.024751961821045422
+   ],
+   "employer": [
+    0.8406035396730034,
+    0.15939646032699772
+   ],
+   "ident": [
+    0.9990000000000001,
+    0.001
+   ],
+   "location": [
+    0.1727496641996712,
+    0.48807159208097883,
+    0.001,
+    0.001,
+    0.33617874371935236,
+    0.001
+   ],
+   "name": [
+    0.48434858025408445,
+    0.13015315744691272,
+    0.056631527035141724,
+    0.11425658862787516,
+    0.15151417229871217,
+    0.001,
+    0.02632869297156832,
+    0.00943858872841159,
+    0.02632869263729338
+   ],
+   "phone": [
+    0.6458736084885905,
+    0.3541263915114089
+   ]
+  },
+  "m_floor": 0.001,
+  "sessions": {
+   "email": {
+    "blocked": [
+     "email"
+    ],
+    "lam": 0.999999999,
+    "pairs": 1942
+   },
+   "family_initial+name_key+phonetic": {
+    "blocked": [
+     "name"
+    ],
+    "lam": 0.28028043513112283,
+    "pairs": 36950
+   },
+   "given_dob": {
+    "blocked": [
+     "date_of_birth",
+     "name"
+    ],
+    "lam": 0.6176894938694416,
+    "pairs": 2170
+   },
+   "identifier": {
+    "blocked": [
+     "ident"
+    ],
+    "lam": 0.999999999,
+    "pairs": 69
+   }
+  },
+  "tf": {
+   "comparison": "name",
+   "count": "observation",
+   "exact_level": 0,
+   "feature": "pname.tf_key",
+   "fuzzy_levels": [
+    1,
+    2,
+    3,
+    4
+   ]
+  },
+  "u": {
+   "address": [
+    0.0005095108695652174,
+    0.9994904891304348
+   ],
+   "date_of_birth": [
+    0.00021377309512902732,
+    1.5269506794930524e-05,
+    0.0004428156970529852,
+    1.5269506794930524e-05,
+    0.9993128721942282
+   ],
+   "email": [
+    0.0002176515398846447,
+    0.9997823484601154
+   ],
+   "employer": [
+    0.0031701065695399974,
+    0.99682989343046
+   ],
+   "ident": [
+    0.0017064846416382253,
+    0.9982935153583617
+   ],
+   "location": [
+    0.00082574706419845,
+    0.04653964601170937,
+    0.00546888219567498,
+    6.768418559003689e-06,
+    0.381630512030864,
+    0.5655284442789942
+   ],
+   "name": [
+    0.0001933275335073281,
+    8.333083340833108e-05,
+    1.999940001799946e-05,
+    0.00014332903346232946,
+    0.00012666286678066324,
+    6.666466672666487e-06,
+    0.0074464432733684655,
+    0.006146482272198501,
+    0.9858337583205837
+   ],
+   "phone": [
+    0.0002526577653392416,
+    0.9997473422346608
+   ]
+  },
+  "unlearned": []
+ },
+ "model_version": "starter.1",
+ "random_pairs": 300000,
+ "trained_on": {
+  "generator": "people",
+  "people": 4000,
+  "records": 9542,
+  "seed": 20261008,
+  "version": "1"
+ }
+}

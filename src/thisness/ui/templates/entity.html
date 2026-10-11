@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "_macros.html" import state_chip, avatar, entity_link %}
+{% set active = "type:" ~ d.entity.entity_type %}
+{% block title %}{{ d.label }}{% endblock %}
+{% block topbar %}
+  <span class="crumb"><a href="/entities/{{ d.entity.entity_type }}">{{ icon(TYPE_ICONS.get(d.entity.entity_type, 'circle-dashed')) }} {{ type_title(d.entity.entity_type) }}</a></span>
+  <span class="crumb-sep">/</span><span class="title">{{ d.label }}</span>
+{% endblock %}
+{% block content %}
+<div class="record">
+  <section class="record-fields">
+    <div class="record-head">
+      {{ avatar(d.label, "lg") }}
+      <h1>{{ d.label }}</h1>
+      <div class="meta">{{ state_chip(d.entity.state) }}<span class="chip">v{{ d.entity.version }}</span><span class="mono light">{{ d.entity.entity_id }}</span></div>
+      <div class="muted">{{ plural(d.member_count, 'observation') }}{% if d.redacted %}, {{ d.redacted }} redacted{% endif %} · as of ledger seq {{ d.as_of_seq }}</div>
+      {% if d.lineage.redirected_from %}<div class="muted">{{ d.lineage.redirected_from }} was merged into this entity</div>{% endif %}
+    </div>
+    {% if d.contradictions %}
+    <div class="contradictions">
+      <div class="head">{{ icon("alert-triangle") }} {{ plural(d.contradictions|length, 'contradiction') }}</div>
+      <ul>
+      {% for c in d.contradictions %}
+        <li><b>{{ c.attribute }}</b>{% if c.scheme %} ({{ c.scheme }}){% endif %}:
+          {% for s in c.sides %}{{ s.value }} <span class="support">×{{ s.observations|length }}</span>{% if not loop.last %} vs {% endif %}{% endfor %}</li>
+      {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    <div class="section-title">Fields</div>
+    {% for a in d.attributes %}
+      {% set shown = a.shown %}{% set others = a.values|length - (1 if shown else 0) %}
+      <div class="field">
+        <span class="label">{{ icon(ATTRIBUTE_ICONS.get(a.attribute, 'circle-dashed'), 14) }} {{ a.attribute|replace('_', ' ') }}</span>
+        <span class="value">{{ fmt(a.canonical if a.canonical is not none else a.values[0].value) }}
+          <span class="support">{{ shown.observations|length if shown else 0 }}/{{ a.observed }}{% if others > 0 %} · {{ others }} other{{ 's' if others > 1 }}{% endif %}</span></span>
+      </div>
+    {% endfor %}
+    {% if d.authorities %}
+    <div class="section-title">Authorities</div>
+    {% for v in d.authorities %}
+    <div class="field authority{{ ' disagrees' if not v.agrees }}">
+      <span class="label">{{ icon("scale", 14) }} {{ v.source|upper }}{% if v.reference %} <span class="chip">reference</span>{% endif %}</span>
+      <span class="value">{% if not v.agrees %}{{ icon("alert-triangle", 14) }} {% endif %}{{ v.accepted }}
+        <span class="support">{{ plural(v.observations|length, 'record') }}{% for s, n in v.statuses %} · {{ n }} {{ s }}{% endfor %}</span></span>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% if d.lineage.merged_from or d.lineage.split_from or d.lineage.split_into %}
+      <div class="section-title">Lineage</div>
+      {% for e, seq in d.lineage.merged_from %}<div class="field"><span class="label">{{ icon("git-merge", 14) }} merged in</span><span class="value mono">{{ e }} <span class="support">seq {{ seq }}</span></span></div>{% endfor %}
+      {% for e, seq in d.lineage.split_from %}<div class="field"><span class="label">{{ icon("arrows-split", 14) }} split from</span><span class="value"><a class="mono" href="/entity/{{ e }}">{{ e }}</a> <span class="support">seq {{ seq }}</span></span></div>{% endfor %}
+      {% for e, seq in d.lineage.split_into %}<div class="field"><span class="label">{{ icon("arrows-split", 14) }} split into</span><span class="value"><a class="mono" href="/entity/{{ e }}">{{ e }}</a> <span class="support">seq {{ seq }}</span></span></div>{% endfor %}
+    {% endif %}
+    {% if d.open_reviews %}
+      <div class="section-title">Open reviews</div>
+      {% for r in d.open_reviews %}<div class="field"><span class="label">{{ icon("list-check", 14) }} {{ r.kind }}</span><span class="value"><a class="name-chip" href="/reviews/{{ r.review_id }}"><span>Review {{ plural(r.members|length, 'record') }}</span></a></span></div>{% endfor %}
+    {% endif %}
+  </section>
+  <section>
+    <nav class="tabs">
+      {% for key, label, ic in [("values", "Values", "chart-dots"), ("members", "Observations", "users"), ("relationships", "Relationships", "link"), ("history", "History", "history"), ("context", "Context", "file-text")] %}
+        <a class="tab {% if tab == key %}active{% endif %}" href="/entity/{{ d.entity.entity_id }}?tab={{ key }}"
+           hx-get="/entity/{{ d.entity.entity_id }}/tab/{{ key }}" hx-target="#tab-body" hx-push-url="/entity/{{ d.entity.entity_id }}?tab={{ key }}"
+           onclick="document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">{{ icon(ic, 14) }} {{ label }}{% if key == 'relationships' and (d.relationships or d.relationship_candidates) %} <span class="light">{{ d.relationships|length + d.relationship_candidates|length }}</span>{% endif %}</a>
+      {% endfor %}
+    </nav>
+    <div id="tab-body">{% include "entity_tab.html" %}</div>
+  </section>
+</div>
+{% endblock %}

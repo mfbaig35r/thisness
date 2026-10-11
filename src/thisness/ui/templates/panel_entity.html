@@ -1,0 +1,37 @@
+{% from "_macros.html" import state_chip, avatar %}
+{% set head %}{{ avatar(d.label) }} <span class="title">{{ d.label }}</span> {{ state_chip(d.entity.state) }}{% endset %}
+{% include "_panel_head.html" %}
+<div class="panel-body">
+  {% if d.contradictions %}
+  <div class="contradictions"><div class="head">{{ icon("alert-triangle") }} {{ plural(d.contradictions|length, 'contradiction') }}</div>
+    <ul>{% for c in d.contradictions %}<li><b>{{ c.attribute }}</b>: {% for s in c.sides %}{{ s.value }}{% if not loop.last %} vs {% endif %}{% endfor %}</li>{% endfor %}</ul></div>
+  {% endif %}
+  <div class="section-title">Fields</div>
+  {% for a in d.attributes %}
+  <div class="field">
+    <span class="label">{{ icon(ATTRIBUTE_ICONS.get(a.attribute, 'circle-dashed'), 14) }} {{ a.attribute|replace('_', ' ') }}</span>
+    <span class="value">{{ fmt(a.canonical if a.canonical is not none else a.values[0].value) }} <span class="support">{{ a.shown.observations|length if a.shown else 0 }}/{{ a.observed }}</span></span>
+  </div>
+  {% endfor %}
+  {% if d.authorities %}
+  <div class="section-title">Authorities</div>
+  {% for v in d.authorities %}
+  <div class="field authority{{ ' disagrees' if not v.agrees }}">
+    <span class="label">{{ icon("scale", 14) }} {{ v.source|upper }}{% if v.reference %} <span class="chip">reference</span>{% endif %}</span>
+    <span class="value">{% if not v.agrees %}{{ icon("alert-triangle", 14) }} {% endif %}{{ v.accepted }}
+      <span class="support">{{ plural(v.observations|length, 'record') }}{% for s, n in v.statuses %} · {{ n }} {{ s }}{% endfor %}</span></span>
+  </div>
+  {% endfor %}
+  {% endif %}
+  <div class="section-title">Observations <span class="light">{{ "{:,}".format(d.member_count) }}</span></div>
+  {% for m in d.members %}
+  <div class="field"><span class="label">{{ icon("database", 14) }} {{ m.source.type }}</span>
+    <span class="value"><a href="#" hx-get="/panel/observation/{{ m.observation_id }}" hx-target="#panel-body">{{ (m.attributes or {}).get('name') or m.observation_id }}</a></span></div>
+  {% endfor %}
+  {% if d.member_count > d.members|length %}<div class="field"><span></span><span class="light">+{{ "{:,}".format(d.member_count - d.members|length) }} more</span></div>{% endif %}
+  {% if d.open_reviews %}
+  <div class="section-title">Open reviews</div>
+  {% for r in d.open_reviews %}<div class="field"><span class="label">{{ icon("list-check", 14) }} {{ r.kind }}</span><span class="value"><a href="/reviews/{{ r.review_id }}" hx-boost="true">Open the review</a></span></div>{% endfor %}
+  {% endif %}
+</div>
+<div class="panel-foot"><a class="btn primary" href="/entity/{{ d.entity.entity_id }}" hx-boost="true">{{ icon("external-link", 14) }} Open</a></div>

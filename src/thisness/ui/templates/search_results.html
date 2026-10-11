@@ -1,0 +1,7 @@
+{% for h in hits %}
+  {% if h.kind == 'entity' %}<a class="hit" href="/entity/{{ h.id }}">{{ icon("building", 14) }} {{ h.label }} <span class="detail">{{ h.detail }}</span></a>
+  {% elif h.kind == 'review' %}<a class="hit" href="/reviews/{{ h.id }}">{{ icon("list-check", 14) }} {{ h.label }} <span class="detail">{{ h.detail }}</span></a>
+  {% else %}<a class="hit" href="#" hx-get="/panel/{{ h.kind }}/{{ h.id }}" hx-target="#panel-body" onclick="document.getElementById('cmdk').close()">{{ icon("file-text", 14) }} {{ h.label }} <span class="detail">{{ h.kind }} · {{ h.detail }}</span></a>{% endif %}
+{% else %}
+  <div class="empty">{% if q %}Nothing matches “{{ q }}”.{% else %}Names, or ids such as org_…, obs_…, rev_…, dec_…{% endif %}</div>
+{% endfor %}
