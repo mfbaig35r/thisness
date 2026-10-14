@@ -224,3 +224,28 @@ Benchmarks: the contested pairs of the Organization and Person benchmarks (adjud
 
 - **What limits precision.** With a right model, every remaining false merge is distinct companies with identical names after collapse ("Premier Services AG" twice, "Premier Services" thirteen times): the benchmark's 25 "Premier Services" companies. From names alone they cannot be told apart; Fellegi-Sunter declines them through its common-name adjustment, which is why its precision is 1.0 and its recall half. The plan has no such guard: a key shared by distinct entities collapses. Systematic folding of related companies adds false merges as it did for the adjudicator. Both are measurements a real model run should repeat; the oracle groups common names by truth, which a real model told to treat common names with suspicion may not.
 - **Tests:** `test_name_only.py` (windows; the collapse key; one vote per stage, echoes and derived votes; recall far above Fellegi-Sunter on names with the oracle; later records joining existing entities; discarded answers and an exhausted budget leaving names provisional; folding related companies).
+
+### 11.5 A rewrite-and-hash baseline, measured
+
+Supplier-consolidation pipelines often resolve names another way: a model rewrites every name in overlapping chunks to a cleaned, consolidated form, in one to three passes, and records whose final rewrites are equal (after keeping letters and digits) are one organization; a last call standardizes each group's name, and groups whose standardized names match merge. Identity is string equality of model output: no pairwise evidence, no votes, no reviews. The name-only plan was measured against it, with a real model, before deciding what to take from it.
+
+- **The baseline** (`benchmark/rewrite.py`, `thisness eval --plan rewrite`): distinct names keyed by their letters and digits; passes over chunks of 50, 75 and 100 overlapping by 10, the first in input order and later ones in key-hash order as such pipelines build it (`--rewrite-order as_built`) or by name (`sorted`); the last answered rewrite per name; one standardization call per group. Its prompts are written for it. Records are shuffled first, since the generators emit them organization by organization and an AP extract is in no such order.
+- **Results** (gpt-6-luna for every model call, names-only benchmarks):
+
+  | Benchmark | Method | Precision | Recall | False-merge clusters | Reviews | Cost |
+  |---|---|---|---|---|---|---|
+  | Synthetic, 805 organizations, 1,776 records | Fellegi-Sunter on names | 1.000 | .528 | 0 | 219 | |
+  | | name-only plan | .984 | .964 | 7 | 12 | $0.14 |
+  | | rewrite, as built | .983 | .762 | 10 | | $0.10 |
+  | | rewrite, passes by name | .983 | .976 | 8 | | $0.10 |
+  | UK, 400 sampled, 3,507 records (design 07) | Fellegi-Sunter on names | .9996 | .344 | 1 | 455 | |
+  | | name-only plan | .9966 | .944 | 6 | 32 | $0.16 |
+  | | rewrite, as built | .9977 | .825 | 5 | | $0.17 |
+  | | rewrite, passes by name | .9961 | .949 | 6 | | $0.16 |
+
+- **String equality does not over-merge.** Precision is the same for every method with a model; the false merges they share are the ones names cannot settle (the synthetic "Premier Services" companies, real UK namesakes), most fixed before any model sees them by the key or the collapse.
+- **Order decides the baseline's recall.** A model consolidates the variants a chunk shows together. Ordered by key hash, later passes scatter one organization's variants across chunks, and 12 to 21 points of recall are lost; ordered by name, the baseline matches the name-only plan. The standardization call merges almost nothing (1,094 groups before it, 1,092 after), so it does not repair the scatter.
+- **What the name-only plan adds is not a better score.** It holds contested clusters for review (12 and 32 here) where the baseline commits everything, and every link it makes cites the votes and the exact batches behind it. It was also faster in these runs (154 s against 184 and 406 s on the synthetic benchmark, 435 s against 1,150 and 1,620 s on the UK one), since the baseline's passes run one after another.
+- **What to take from the baseline** is not its identity rule but what it does around it: cleaning names of payment prefixes, store and account numbers and notes, and a standardized display name per entity. Both are design 08's subject.
+- **Reproducing.** The model runs are recorded; with the recording, `thisness eval --names-only --plan rewrite --rewrite-order sorted --size 805 --seeds 20261007 --adjudicator openai --model gpt-6-luna --replay CASSETTE` (and `--source uk --size 400 --seeds 20261009`) reproduces the table's rows exactly, offline. Without a model, `--plan rewrite` uses an oracle that consolidates only what one chunk shows (and standardizes without merging): on 805 organizations it gives recall .61 as built and .996 by name, the same effect.
+- **Tests:** `test_rewrite.py` (the key; chunks overlapping and covering every name; hash order losing recall to name order at equal precision; identical names of different companies merging; unanswered chunks keeping their names; a spent budget stopping calls without failing the run; names-only UK benchmarks; `eval --plan rewrite`). `names_only()` now takes the UK benchmark as well as the synthetic one.

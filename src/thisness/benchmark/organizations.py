@@ -17,7 +17,7 @@ Proportions follow the design 03 dataset; ``n_orgs`` scales the whole set.
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import ClassVar
 
 SYLLABLES = [
@@ -323,10 +323,11 @@ def generate(n_orgs: int = 805, seed: int = 20261007) -> Benchmark:
     return Benchmark(seed, orgs, records)
 
 
-def names_only(benchmark: Benchmark, *, account_numbers: float = 0.25, seed: int = 0) -> Benchmark:
+def names_only(benchmark, *, account_numbers: float = 0.25, seed: int = 0):
     """The supplier-names benchmark (design 05 §7): the same organizations and records with
     every attribute but the name removed, and a vendor or account number appended to a
-    quarter of the names ("Harjas Foods PLC - 812773"), as in AP and ERP extracts."""
+    quarter of the names ("Harjas Foods PLC - 812773"), as in AP and ERP extracts. Works
+    on the synthetic benchmark and on the UK one (design 07)."""
     rng = random.Random(f"{seed}|names_only")
     records = []
     for r in benchmark.records:
@@ -334,5 +335,7 @@ def names_only(benchmark: Benchmark, *, account_numbers: float = 0.25, seed: int
         if rng.random() < account_numbers:
             number = rng.randrange(100_000, 999_999)
             name = rng.choice([f"{name} - {number}", f"{name} {number}", f"{name} #{number}"])
-        records.append(Record(r.record_id, r.org_id, {"name": name}))
+        records.append(replace(r, attributes={"name": name}))
+    if not isinstance(benchmark, Benchmark):
+        return replace(benchmark, records=records, variant="names_only")
     return Benchmark(benchmark.seed, benchmark.organizations, records, variant="names_only")

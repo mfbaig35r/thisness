@@ -13,6 +13,7 @@ import json
 import os
 import sys
 from collections.abc import Callable, Sequence
+from dataclasses import asdict
 from pathlib import Path
 
 from thisness.engine import Thisness
@@ -368,6 +369,37 @@ def _name_only_factory(args: argparse.Namespace):
     return build
 
 
+def _eval_rewrite(args: argparse.Namespace, bench) -> None:
+    """The rewrite-and-hash baseline on one benchmark (design 05 §11.5)."""
+    from thisness.benchmark import rewrite
+    from thisness.llm import LLMClient, LLMPolicy
+    from thisness.llm.providers import RecordingProvider
+
+    engine = Thisness(":memory:")
+    if args.adjudicator in ("none", "oracle"):
+        provider = rewrite.oracle(bench)
+        if args.record:
+            provider = RecordingProvider(provider, args.record)
+        model = "oracle"
+    else:
+        args.provider = args.adjudicator
+        provider, model = _provider(args), args.model
+    client = LLMClient(engine.store, provider, ids=engine.ids, clock=engine.clock,
+                       policy=LLMPolicy(budget_usd=args.budget, concurrency=args.concurrency))  # fmt: skip
+    result = rewrite.run(bench, client, model=model, order=args.rewrite_order,
+                         concurrency=args.concurrency)  # fmt: skip
+    m = result.metrics
+    if args.json:
+        print(json.dumps({"benchmark": bench.config, "clusters": asdict(m), "run": result.stats},
+                         indent=1))  # fmt: skip
+        return
+    print(f"{m.observations} records: B3 P {m.b3_precision:.4f} R {m.b3_recall:.4f} "
+          f"F1 {m.b3_f1:.4f} | false-merge clusters {m.false_merge_clusters} "
+          f"(contaminated {m.contaminated}, largest {m.largest_bad_cluster})")  # fmt: skip
+    keep = ("order", "keys", "intermediate_groups", "final_groups", "calls", "failed", "spent_usd")
+    print("  rewrite:", json.dumps({k: result.stats[k] for k in keep}, sort_keys=True))
+
+
 def cmd_eval(args: argparse.Namespace) -> int:
     from thisness.benchmark.evaluate import run_benchmark
     from thisness.benchmark.organizations import names_only
@@ -388,6 +420,9 @@ def cmd_eval(args: argparse.Namespace) -> int:
     if args.save and Path(args.save).exists():
         print(f"{args.save} exists; choose another path", file=sys.stderr)
         return 1
+    if args.plan == "rewrite" and (args.save or args.type != "organization"):
+        print("--plan rewrite scores organizations' names and keeps no store", file=sys.stderr)
+        return 1
     factory = _adjudicator_factory(args)
     plan = _name_only_factory(args)
     if args.source == "uk" and args.type != "organization":
@@ -404,6 +439,9 @@ def cmd_eval(args: argparse.Namespace) -> int:
                 bench = _generator(args.type)(n, seed=seed, **options)
             if args.names_only:
                 bench = names_only(bench)
+            if args.plan == "rewrite":
+                _eval_rewrite(args, bench)
+                continue
             report, engine, _ = run_benchmark(bench, adjudicator=factory, plan=plan,
                                               store=args.save or ":memory:")  # fmt: skip
             if args.save:
@@ -530,9 +568,12 @@ def parser() -> argparse.ArgumentParser:
         help="with --source uk: whether records carry company numbers and LEIs",
     )
     s.add_argument("--col", action="store_true", help="taxa only: the Catalogue of Life's rows")
-    s.add_argument("--plan", default="default", choices=["default", "name-only"],
-                   help="name-only: group names with --adjudicator's model (or the oracle)")  # fmt: skip
+    s.add_argument("--plan", default="default", choices=["default", "name-only", "rewrite"],
+                   help="name-only: group names with --adjudicator's model (or the oracle); "
+                        "rewrite: the rewrite-and-hash baseline (design 05 §11.5)")  # fmt: skip
     s.add_argument("--group-model", default="claude-haiku-4-5")
+    s.add_argument("--rewrite-order", default="as_built", choices=["as_built", "sorted"],
+                   help="with --plan rewrite: later passes ordered by key hash, or by name")  # fmt: skip
     s.set_defaults(func=cmd_eval)
     return p
 

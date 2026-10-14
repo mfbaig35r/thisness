@@ -491,6 +491,7 @@ class Benchmark:
     files: dict[str, str]
     mode: str = "hidden"
     entity_type: str = "organization"
+    variant: str = ""  # "names_only" when every attribute but the name is removed
     kind: dict[str, str] = field(init=False)
     truth: dict[str, str] = field(init=False)  # record id -> org id
     group: dict[str, str | None] = field(init=False)  # org id -> corporate group
@@ -508,7 +509,8 @@ class Benchmark:
                 "mode": self.mode, "files": self.files,
                 "organizations": len(self.orgs), "records": len(self.records),
                 "kinds": dict(Counter(self.kind.values())),
-                "sources": dict(Counter(r.source for r in self.records))}  # fmt: skip
+                "sources": dict(Counter(r.source for r in self.records)),
+                **({"variant": self.variant} if self.variant else {})}  # fmt: skip
 
 
 def _universe(db: Path, n: int, seed: int) -> tuple[list[dict], list[tuple[str, str]], dict]:
