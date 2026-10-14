@@ -219,6 +219,27 @@ def cmd_history(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export(args: argparse.Namespace) -> int:
+    """The mapping table (design 08 §6): CSV to standard output, or a file."""
+    import pyarrow.csv as pacsv
+    import pyarrow.parquet as pq
+
+    if args.format == "parquet" and not args.output:
+        print("--format parquet needs --output FILE", file=sys.stderr)
+        return 1
+    engine = _engine(args.store)
+    table = engine.mapping(args.type, as_of_seq=args.as_of)
+    if args.format == "parquet":
+        pq.write_table(table, args.output)
+    elif args.output:
+        pacsv.write_csv(table, args.output)
+    else:
+        pacsv.write_csv(table, sys.stdout.buffer)
+    if args.output:
+        print(f"{table.num_rows:,} rows to {args.output}", file=sys.stderr)
+    return 0
+
+
 def cmd_dossier(args: argparse.Namespace) -> int:
     engine = _engine(args.store)
     d = engine.dossier(args.id)
@@ -516,6 +537,14 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("id")
     s.add_argument("--chars", type=int, default=4000)
     s.set_defaults(func=cmd_dossier)
+
+    s = sub.add_parser("export", help="export the mapping of records to entities")
+    s.add_argument("what", choices=["mapping"])
+    s.add_argument("--type", default="organization", choices=sorted(PROFILES))
+    s.add_argument("--format", default="csv", choices=["csv", "parquet"])
+    s.add_argument("--output", default=None, help="a file; CSV goes to standard output without one")
+    s.add_argument("--as-of", type=int, default=None, help="the mapping as of this ledger seq")
+    s.set_defaults(func=cmd_export)
 
     s = sub.add_parser("reviews", help="open reviews, most impactful first")
     s.set_defaults(func=cmd_reviews)

@@ -171,6 +171,22 @@ def entities(request: Request, entity_type: str, state: str | None = None, q: st
                   state=state or "", q=q or "", page=page, counts=counts)  # fmt: skip
 
 
+@router.get("/export/mapping/{entity_type}.csv")
+def export_mapping(request: Request, entity_type: str) -> Response:
+    """Every record of a type, its entity and the entity's name (design 08 §6)."""
+    import pyarrow as pa
+    import pyarrow.csv as pacsv
+
+    engine = engine_of(request)
+    if entity_type not in engine.profiles:
+        return Response(f"no entity type {entity_type}", status_code=404)
+    sink = pa.BufferOutputStream()
+    pacsv.write_csv(engine.mapping(entity_type), sink)
+    return Response(sink.getvalue().to_pybytes(), media_type="text/csv",
+                    headers={"Content-Disposition":
+                             f'attachment; filename="{entity_type}-mapping.csv"'})  # fmt: skip
+
+
 @router.get("/entity/{entity_id}", response_class=HTMLResponse)
 def entity(request: Request, entity_id: str, tab: str = "values") -> Response:
     engine = engine_of(request)

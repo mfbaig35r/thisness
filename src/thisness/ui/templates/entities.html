@@ -9,6 +9,7 @@
   <a class="filter {% if state == 'active' %}on{% endif %}" href="?state={{ '' if state == 'active' else 'active' }}&q={{ q }}">Active <span class="light">{{ counts.get('active', 0) }}</span></a>
   <a class="filter {% if state == 'provisional' %}on{% endif %}" href="?state={{ '' if state == 'provisional' else 'provisional' }}&q={{ q }}">Provisional <span class="light">{{ counts.get('provisional', 0) }}</span></a>
   <span class="spacer"></span>
+  <a class="filter" href="/export/mapping/{{ entity_type }}.csv" download title="Every record of this type, its entity and the entity's name">{{ icon("download", 14) }} Mapping</a>
   <form class="search-box" method="get" action="">
     {{ icon("search", 14) }}<input type="search" name="q" value="{{ q }}" placeholder="Filter by name or id">
     {% if state %}<input type="hidden" name="state" value="{{ state }}">{% endif %}

@@ -995,6 +995,13 @@ class Thisness:
 
     # -- reads -------------------------------------------------------------------------------
 
+    def mapping(self, entity_type: str, as_of_seq: int | None = None):
+        """Every observation of a type, its entity and that entity's name, as a pyarrow
+        table: the table a spend analyst takes away (design 08 §6). ``as_of_seq`` gives it
+        as it stood at a point in the ledger, so a report can be reproduced after later
+        merges and splits."""
+        return self.store.mapping(entity_type, as_of_seq)
+
     def names(self, entity_ids: Sequence[str]) -> dict[str, str]:
         """Each entity's current name, its id when it has none, in one query."""
         found = self.store.snapshot_names(list(entity_ids))

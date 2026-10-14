@@ -899,6 +899,55 @@ class DuckDBStore:
                 out[r["entity_id"]] = name
         return out
 
+    def mapping(self, entity_type: str, as_of_seq: int | None = None) -> pa.Table:
+        """Every observation of a type with its entity as of a ledger point (design 08 §6):
+        source, name, entity, the entity's name then, and a status. ``in_review`` when the
+        observation or its entity is a member of a review open at that point; then
+        ``unresolved`` with no entity, ``provisional`` when the entity was created
+        provisional and not yet promoted, else ``resolved``."""
+        query = """
+            WITH head AS (SELECT coalesce(?, (SELECT max(seq) FROM ledger_events), 0) AS s),
+            obs AS (
+                SELECT o.observation_id, o.source_type, o.source_id,
+                       CAST(o.source_locator AS VARCHAR) AS locator, (o.attributes->>'name') AS name
+                FROM observations o JOIN ledger_events i
+                  ON i.observation_id = o.observation_id AND i.event_type = 'OBSERVATION_INGESTED'
+                WHERE o.entity_type = ? AND i.seq <= (SELECT s FROM head)),
+            mem AS (
+                SELECT observation_id, entity_id, basis_decision_id, valid_from_seq FROM memberships
+                WHERE valid_from_seq <= (SELECT s FROM head)
+                  AND (valid_to_seq IS NULL OR valid_to_seq > (SELECT s FROM head))),
+            snap AS (
+                SELECT entity_id, (attributes->>'name') AS entity_name FROM entity_snapshots
+                WHERE created_seq <= (SELECT s FROM head)
+                QUALIFY row_number() OVER (PARTITION BY entity_id ORDER BY version DESC) = 1),
+            provisional AS (
+                SELECT c.entity_id FROM ledger_events c
+                WHERE c.event_type = 'ENTITY_CREATED' AND (c.payload->>'state') = 'provisional'
+                  AND c.seq <= (SELECT s FROM head)
+                  AND NOT EXISTS (SELECT 1 FROM ledger_events p
+                                  WHERE p.event_type = 'ENTITY_PROMOTED'
+                                    AND p.entity_id = c.entity_id AND p.seq <= (SELECT s FROM head))),
+            open_nodes AS (
+                SELECT DISTINCT unnest(from_json(members, '["VARCHAR"]')) AS node FROM review_items
+                WHERE opened_seq <= (SELECT s FROM head)
+                  AND (closed_seq IS NULL OR closed_seq > (SELECT s FROM head)))
+            SELECT obs.source_type, obs.source_id, obs.locator, obs.name, obs.observation_id,
+                   mem.entity_id, coalesce(snap.entity_name, mem.entity_id) AS entity_name,
+                   CASE WHEN obs.observation_id IN (SELECT node FROM open_nodes)
+                          OR mem.entity_id IN (SELECT node FROM open_nodes) THEN 'in_review'
+                        WHEN mem.entity_id IS NULL THEN 'unresolved'
+                        WHEN provisional.entity_id IS NOT NULL THEN 'provisional'
+                        ELSE 'resolved' END AS status,
+                   CAST(NULL AS VARCHAR) AS record_status,
+                   mem.valid_from_seq AS since_seq, mem.basis_decision_id AS decision_id
+            FROM obs LEFT JOIN mem USING (observation_id)
+            LEFT JOIN snap ON snap.entity_id = mem.entity_id
+            LEFT JOIN provisional ON provisional.entity_id = mem.entity_id
+            ORDER BY obs.observation_id
+        """
+        return _arrow(self._con.execute(query, [as_of_seq, entity_type]))
+
     def members_of(self, entity_ids: Sequence[str]) -> dict[str, list[str]]:
         """Current members of each entity, in id (ingest) order."""
         rows = self._by_ids(
