@@ -16,6 +16,20 @@
       <div class="muted">{{ plural(d.member_count, 'observation') }}{% if d.redacted %}, {{ d.redacted }} redacted{% endif %} · as of ledger seq {{ d.as_of_seq }}</div>
       {% if d.lineage.redirected_from %}<div class="muted">{{ d.lineage.redirected_from }} was merged into this entity</div>{% endif %}
     </div>
+    {% if named %}
+    <div class="name-note">{{ icon("circle-check", 14) }} <span>Name set by a person</span><span class="spacer"></span>
+      <form method="post" action="/entity/{{ d.entity.entity_id }}/label"><input type="hidden" name="action" value="clear">
+        <button class="btn small">{{ icon("x", 13) }} Clear</button></form></div>
+    {% elif name_suggestion %}
+    <div class="suggestion name-suggestion">
+      <div class="suggestion-head">{{ icon("sparkles", 15) }} <b>Suggested name</b><span class="light">{{ name_suggestion.actor.id }}</span></div>
+      <div class="suggestion-body">{{ name_suggestion.name }}</div>
+      <form method="post" action="/entity/{{ d.entity.entity_id }}/label" class="suggestion-codes">
+        <input type="hidden" name="action" value="accept"><input type="hidden" name="suggestion" value="{{ name_suggestion.decision_id }}">
+        <button class="btn small primary">{{ icon("circle-check", 13) }} Use this name</button>
+        <span class="light">recorded in the history, and can be cleared</span></form>
+    </div>
+    {% endif %}
     {% if d.contradictions %}
     <div class="contradictions">
       <div class="head">{{ icon("alert-triangle") }} {{ plural(d.contradictions|length, 'contradiction') }}</div>

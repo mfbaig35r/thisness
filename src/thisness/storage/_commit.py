@@ -23,8 +23,10 @@ from thisness.core.run import (
     AddConstraint,
     Attach,
     ChangeSet,
+    ClearLabel,
     CloseReview,
     CreateEntity,
+    Label,
     Merge,
     OpenReview,
     Promote,
@@ -46,6 +48,8 @@ IDENTITY_EVENTS = frozenset(
         EventType.ENTITY_REACTIVATED,
         EventType.MEMBERSHIP_ACCEPTED,
         EventType.MEMBERSHIP_ENDED,
+        EventType.ENTITY_LABELED,
+        EventType.ENTITY_LABEL_CLEARED,
     }
 )
 
@@ -138,6 +142,8 @@ class CommitPlan:
             "merge": self._merge,
             "split": self._split,
             "promote": self._promote,
+            "label": self._label,
+            "clear_label": self._clear_label,
             "relate": self._relate,
             "revoke_relationship": self._revoke,
             "open_review": self._open_review,
@@ -183,7 +189,7 @@ class CommitPlan:
                     entity_ids.update((op.source_id, *op.targets))
                     for observations in op.targets.values():
                         observation_ids.update(observations)
-                case "promote":
+                case "promote" | "label" | "clear_label":
                     entity_ids.add(op.entity_id)
                 case "relate":
                     entity_ids.update((op.subject_entity_id, op.object_entity_id))
@@ -431,6 +437,22 @@ class CommitPlan:
             raise InvalidOperation(index, f"{op.entity_id} is {entity.state}, not provisional")
         self._emit(EventType.ENTITY_PROMOTED, decision_id=op.decision_id, entity_id=op.entity_id)
         entity.state, entity.dirty = "active", True
+
+    def _label(self, index: int, op: Label) -> None:
+        entity = self._entity(index, op.entity_id)
+        if entity.state == "retired":
+            raise InvalidOperation(index, f"{op.entity_id} is retired")
+        self._emit(EventType.ENTITY_LABELED, decision_id=op.decision_id, entity_id=op.entity_id,
+                   payload={"name": op.name, "suggestion_id": op.suggestion_id})  # fmt: skip
+        entity.dirty = True
+
+    def _clear_label(self, index: int, op: ClearLabel) -> None:
+        entity = self._entity(index, op.entity_id)
+        if entity.state == "retired":
+            raise InvalidOperation(index, f"{op.entity_id} is retired")
+        self._emit(EventType.ENTITY_LABEL_CLEARED, decision_id=op.decision_id,
+                   entity_id=op.entity_id)  # fmt: skip
+        entity.dirty = True
 
     def _relate(self, index: int, op: Relate) -> None:
         self._entity(index, op.subject_entity_id)

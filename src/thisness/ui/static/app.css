@@ -406,3 +406,9 @@ pre.json { margin: 0 var(--t-spacing-4); padding: var(--t-spacing-3); white-spac
 .node-card .nm { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
 th.ref-col, td.ref-col { width: 34px; }
 td.ref-col .ref { margin-left: 0; }
+
+/* -- display names (design 08 §5.2) ------------------------------------------------------ */
+.name-note { display: flex; align-items: center; gap: 6px; margin: var(--t-spacing-3) var(--t-spacing-4) 0;
+  color: var(--t-font-color-tertiary); font-size: var(--t-font-size-sm); }
+.name-note .spacer { flex: 1; }
+.name-suggestion .suggestion-body { font-weight: 500; color: var(--t-font-color-primary); font-size: var(--t-font-size-lg); }

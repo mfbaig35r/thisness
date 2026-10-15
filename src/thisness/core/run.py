@@ -170,6 +170,23 @@ class Promote(Model):
     decision_id: DecisionId
 
 
+class Label(Model):
+    """Set an entity's display name (design 08 §5.2); ``suggestion_id`` cites the model's
+    suggestion it accepts, if any."""
+
+    op: Literal["label"] = "label"
+    entity_id: EntityId
+    name: NonEmpty
+    decision_id: DecisionId
+    suggestion_id: DecisionId | None = None
+
+
+class ClearLabel(Model):
+    op: Literal["clear_label"] = "clear_label"
+    entity_id: EntityId
+    decision_id: DecisionId
+
+
 class Relate(Model):
     op: Literal["relate"] = "relate"
     relationship_id: RelationshipId
@@ -238,6 +255,8 @@ Operation = Annotated[
     | Merge
     | Split
     | Promote
+    | Label
+    | ClearLabel
     | Relate
     | RevokeRelationship
     | OpenReview

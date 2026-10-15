@@ -25,6 +25,7 @@ from thisness.core.decisions import (
     Actor,
     ConsensusDecision,
     Decision,
+    LabelSuggestion,
     OperatorDecision,
     PairJudgment,
     ReviewDecision,
@@ -585,6 +586,9 @@ class DuckDBStore:
             row |= {"verdict": str(d.verdict), "reason": d.reason}
         elif isinstance(d, ReviewRecommendation):
             row |= {"outcome": d.resolution, "reason": d.rationale}
+        elif isinstance(d, LabelSuggestion):
+            row |= {"target_entity_id": d.entity_id, "outcome": "label_suggestion",
+                    "reason": d.rationale}  # fmt: skip
         return row
 
     # -- identity state ------------------------------------------------------------------
@@ -686,6 +690,62 @@ class DuckDBStore:
         if entities or keys:
             raise CommitConflict(changes.base_seq, entities, keys)
 
+    def label_candidates(self, entity_type: str) -> list[tuple[str, str | None]]:
+        """Live entities of a type with their current name, that have no accepted display
+        name and no suggestion yet (design 08 §5.2), largest first."""
+        rows = self._con.execute(
+            """
+            WITH live AS (
+                SELECT e.entity_id, (s.attributes->>'name') AS name FROM entities e
+                JOIN entity_snapshots s ON s.entity_id = e.entity_id AND s.version = e.version
+                WHERE e.entity_type = ? AND e.state <> 'retired'),
+            labeled AS (
+                SELECT entity_id FROM ledger_events
+                WHERE event_type IN ('ENTITY_LABELED', 'ENTITY_LABEL_CLEARED')
+                QUALIFY row_number() OVER (PARTITION BY entity_id ORDER BY seq DESC) = 1
+                  AND event_type = 'ENTITY_LABELED'),
+            suggested AS (
+                SELECT DISTINCT target_entity_id AS entity_id FROM decisions
+                WHERE decision_type = 'label_suggestion'),
+            size AS (
+                SELECT entity_id, count(*) AS n FROM memberships WHERE valid_to_seq IS NULL
+                GROUP BY entity_id)
+            SELECT live.entity_id, live.name FROM live LEFT JOIN size USING (entity_id)
+            WHERE live.entity_id NOT IN (SELECT entity_id FROM labeled)
+              AND live.entity_id NOT IN (SELECT entity_id FROM suggested)
+            ORDER BY coalesce(size.n, 0) DESC, live.entity_id
+            """,
+            [entity_type],
+        ).fetchall()
+        return [(r[0], r[1]) for r in rows]
+
+    def label_suggestions(self, entity_ids: Sequence[str]) -> dict[str, Decision]:
+        """The latest display-name suggestion for each entity that has one."""
+        rows = self._by_ids(
+            "SELECT target_entity_id AS entity_id, body FROM decisions JOIN _qids ON "
+            "target_entity_id = id WHERE decision_type = 'label_suggestion' "
+            "QUALIFY row_number() OVER (PARTITION BY target_entity_id ORDER BY created_at DESC, "
+            "decision_id DESC) = 1",
+            entity_ids,
+        )
+        return {r["entity_id"]: _DECISION.validate_json(r["body"]) for r in rows}
+
+    def labels(self, entity_ids: Sequence[str]) -> dict[str, str]:
+        return self._labels(entity_ids)
+
+    def _labels(self, entity_ids: Sequence[str]) -> dict[str, str]:
+        """Each entity's accepted display name, from the ledger (design 08 §5.2)."""
+        if not entity_ids:
+            return {}
+        rows = self._by_ids(
+            "SELECT entity_id, event_type, payload->>'name' AS name FROM ledger_events "
+            "JOIN _qids ON entity_id = id "
+            "WHERE event_type IN ('ENTITY_LABELED', 'ENTITY_LABEL_CLEARED') "
+            "QUALIFY row_number() OVER (PARTITION BY entity_id ORDER BY seq DESC) = 1",
+            entity_ids,
+        )
+        return {r["entity_id"]: r["name"] for r in rows if r["event_type"] == "ENTITY_LABELED"}
+
     def _write_plan(self, plan: CommitPlan, canonicalizer: Canonicalizer) -> None:
         self._append_events(plan.events)
         new = [e for e in plan.entities.values() if e.is_new]
@@ -711,6 +771,7 @@ class DuckDBStore:
             )
         snapshots = []
         needed = sorted({o for _, _, members in plan.snapshot_targets for o in members})
+        labels = self._labels([e for e, _, _ in plan.snapshot_targets])
         by_id = {o.observation_id: o for o in self.observations(needed)}
         for entity_id, version, members in plan.snapshot_targets:
             observations = [by_id[o] for o in members]
@@ -719,11 +780,14 @@ class DuckDBStore:
                 else canonicalizer  # fmt: skip
             if chosen is not canonicalizer:
                 self._register(chosen.ref, None)
+            attributes = chosen.build(observations)
+            if entity_id in labels:  # an accepted name outranks any canonicalizer's
+                attributes = {**attributes, "name": labels[entity_id]}
             snapshots.append(
                 {
                     "entity_id": entity_id,
                     "version": version,
-                    "attributes": _dumps(chosen.build(observations)),
+                    "attributes": _dumps(attributes),
                     "derived_from": _dumps(members),
                     "canonicalizer_ref": chosen.ref.ref,
                     "created_seq": plan.last_seq,

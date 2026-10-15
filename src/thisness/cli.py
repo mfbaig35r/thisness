@@ -270,6 +270,43 @@ def cmd_recommend(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_labels(args: argparse.Namespace) -> int:
+    """Display names (design 08 §5.2): ask a model for suggestions, list them, accept them,
+    or clear an accepted name."""
+    from thisness.display_names import LabelAssistant
+
+    engine = _engine(args.store)
+    if args.action == "suggest":
+        assistant = LabelAssistant(_client(args, engine), model=args.model)
+        counts = engine.suggest_labels(args.type, assistant=assistant, limit=args.limit)
+        client = assistant.client
+        print(f"{counts}; {client.calls} calls, ${client.spent_usd:.4f}")
+        return 0
+    if args.action == "clear":
+        for entity_id in args.ids:
+            engine.clear_label(entity_id, reason=args.reason or "cleared from the command line")
+        print(f"{len(args.ids)} names cleared")
+        return 0
+    entities = [r.entity_id for r in engine.entities(args.type, limit=1_000_000).rows]
+    labeled = engine.display_labels(entities)
+    suggestions = {e: s for e, s in engine.label_suggestions(entities).items() if e not in labeled}
+    if args.action == "list":
+        names = engine.names(sorted(suggestions))
+        for entity_id, s in list(suggestions.items())[: args.limit]:
+            print(f"{s.decision_id}  {entity_id}  {names[entity_id]!r} -> {s.name!r}")
+        print(f"{len(suggestions)} suggestions not accepted; {len(labeled)} names set")
+        return 0
+    chosen = list(suggestions.values()) if args.all else \
+        [s for s in suggestions.values() if s.decision_id in set(args.ids)]  # fmt: skip
+    if not chosen:
+        print("nothing to accept: give suggestion ids or --all", file=sys.stderr)
+        return 1
+    for s in chosen:
+        engine.accept_label_suggestion(s.decision_id, reason=args.reason or "accepted suggestion")
+    print(f"{len(chosen)} suggestions accepted")
+    return 0
+
+
 def cmd_check(args: argparse.Namespace) -> int:
     from thisness.storage.duckdb.invariants import check
 
@@ -520,6 +557,16 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--limit", type=int, default=20, help="most impactful reviews first")
     _model_options(s, required=True)
     s.set_defaults(func=cmd_recommend)
+
+    s = sub.add_parser("labels", help="display names: suggest, list, accept, clear")
+    s.add_argument("action", choices=["suggest", "list", "accept", "clear"])
+    s.add_argument("ids", nargs="*", help="accept: suggestion ids; clear: entity ids")
+    s.add_argument("--type", default="organization", choices=sorted(PROFILES))
+    s.add_argument("--limit", type=int, default=100)
+    s.add_argument("--all", action="store_true", help="accept: every suggestion not accepted")
+    s.add_argument("--reason", default=None)
+    _model_options(s, required=True)
+    s.set_defaults(func=cmd_labels)
 
     s = sub.add_parser("demo", help="build a store from synthetic organizations or people")
     s.add_argument("--type", default="organization", choices=GENERATED)

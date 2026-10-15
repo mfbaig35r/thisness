@@ -61,6 +61,8 @@ class OperatorAction(StrEnum):
     REVOKE_RELATIONSHIP = "REVOKE_RELATIONSHIP"
     REVOKE_CONSTRAINT = "REVOKE_CONSTRAINT"
     REDACT = "REDACT"
+    LABEL = "LABEL"
+    CLEAR_LABEL = "CLEAR_LABEL"
 
 
 class _DecisionBase(Model):
@@ -179,7 +181,23 @@ class ReviewRecommendation(_DecisionBase):
         return self
 
 
+class LabelSuggestion(_DecisionBase):
+    """A model's suggested display name for an entity (design 08 §5.2). It changes nothing:
+    a person accepting it does, by a labeling commit that cites it. ``name`` is checked to
+    be a spelling of one of the entity's own names before it is recorded."""
+
+    decision_type: Literal["label_suggestion"] = "label_suggestion"
+    entity_id: EntityId
+    name: NonEmpty
+    rationale: str | None = None
+
+
 Decision = Annotated[
-    PairJudgment | ConsensusDecision | OperatorDecision | ReviewDecision | ReviewRecommendation,
+    PairJudgment
+    | ConsensusDecision
+    | OperatorDecision
+    | ReviewDecision
+    | ReviewRecommendation
+    | LabelSuggestion,
     Field(discriminator="decision_type"),
 ]

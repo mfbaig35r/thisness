@@ -193,7 +193,13 @@ def entity(request: Request, entity_id: str, tab: str = "values") -> Response:
     dossier = engine.dossier(entity_id)
     if dossier.entity.entity_id != entity_id:
         return RedirectResponse(f"/entity/{dossier.entity.entity_id}?tab={tab}", status_code=303)
-    return render(request, "entity.html", d=dossier, tab=tab, **_tab_context(engine, dossier, tab))
+    eid = dossier.entity.entity_id
+    named = engine.display_labels([eid]).get(eid)
+    suggestion = None if named else engine.label_suggestions([eid]).get(eid)
+    if suggestion is not None and suggestion.name == dossier.label:
+        suggestion = None
+    return render(request, "entity.html", d=dossier, tab=tab, named=named,
+                  name_suggestion=suggestion, **_tab_context(engine, dossier, tab))  # fmt: skip
 
 
 @router.get("/entity/{entity_id}/tab/{tab}", response_class=HTMLResponse)
@@ -239,6 +245,12 @@ def _timeline(engine: Thisness, entity_id: str) -> list[dict[str, Any]]:
             elif t == "ENTITY_SPLIT":
                 targets = e.payload.get("targets", [])
                 lines.append(("arrows-split", f"Split into {plural(len(targets), 'entity')}", None))
+            elif t == "ENTITY_LABELED":
+                lines.append(
+                    ("circle-check", f"Named \u201c{e.payload.get('name', '')}\u201d", None)
+                )
+            elif t == "ENTITY_LABEL_CLEARED":
+                lines.append(("x", "Name cleared", None))
             elif t == "ENTITY_PROMOTED":
                 lines.append(("circle-check", "Promoted to active", None))
             elif t == "ENTITY_REACTIVATED":
@@ -474,6 +486,23 @@ def panel_candidate(request: Request, left: str, right: str) -> HTMLResponse:
     return TEMPLATES.TemplateResponse(request, "panel_candidate.html", {
         "c": candidate, "left": a, "right": b, "attributes": attributes,
         "relations": relations})  # fmt: skip
+
+
+@router.post("/entity/{entity_id}/label")
+def label_entity(request: Request, entity_id: str, action: str = Form(...),
+                 suggestion: str = Form("")) -> Response:  # fmt: skip
+    """Accept a suggested display name, or clear an accepted one (design 08 §5.2)."""
+    engine = engine_of(request)
+    try:
+        if action == "accept" and suggestion:
+            engine.accept_label_suggestion(suggestion, reason="accepted in the Workbench")
+        elif action == "clear":
+            engine.clear_label(entity_id, reason="cleared in the Workbench")
+        else:
+            return _error("Nothing to do.")
+    except ThisnessError as exc:
+        return _error(str(exc))
+    return _redirect(request, f"/entity/{entity_id}")
 
 
 @router.post("/relationships/decide")

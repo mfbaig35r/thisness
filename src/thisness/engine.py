@@ -46,7 +46,9 @@ from thisness.core.observation import Observation, SourceRef
 from thisness.core.run import (
     Attach,
     ChangeSet,
+    ClearLabel,
     CreateEntity,
+    Label,
     Merge,
     OpenReview,
     Operation,
@@ -66,7 +68,7 @@ from thisness.profiles.base import AttributeDefinition, ResolutionProfile
 from thisness.scoring import evidence_items, score_pairs
 from thisness.starter import load_starter
 from thisness.storage.duckdb import DuckDBStore
-from thisness.storage.errors import CommitConflict, NotFound, ThisnessError
+from thisness.storage.errors import CommitConflict, InvalidOperation, NotFound, ThisnessError
 from thisness.storage.protocol import CommitResult
 from thisness.training import (
     frequencies_from_clusters,
@@ -857,6 +859,52 @@ class Thisness:
     def promote(self, entity_id: str, *, reason: str, actor: Actor | None = None) -> CommitResult:
         return self._operate(OperatorAction.PROMOTE, [entity_id], reason,
                              lambda d: Promote(entity_id=entity_id, decision_id=d), actor)  # fmt: skip
+
+    def label(self, entity_id: str, name: str, *, reason: str, suggestion_id: str | None = None,
+              actor: Actor | None = None) -> CommitResult:  # fmt: skip
+        """Set an entity's display name (design 08 §5.2): a commit, so its history shows it
+        and ``clear_label`` undoes it. Membership changes keep it; a split-off entity does
+        not inherit it."""
+        return self._operate(OperatorAction.LABEL, [entity_id], reason,
+                             lambda d: Label(entity_id=entity_id, name=name, decision_id=d,
+                                             suggestion_id=suggestion_id), actor)  # fmt: skip
+
+    def clear_label(
+        self, entity_id: str, *, reason: str, actor: Actor | None = None
+    ) -> CommitResult:
+        return self._operate(OperatorAction.CLEAR_LABEL, [entity_id], reason,
+                             lambda d: ClearLabel(entity_id=entity_id, decision_id=d), actor)  # fmt: skip
+
+    def accept_label_suggestion(self, suggestion_id: str, *, reason: str = "accepted suggestion",
+                                actor: Actor | None = None) -> CommitResult:  # fmt: skip
+        """Label the entity a suggestion names with its name; if the entity has since been
+        merged, its survivor."""
+        found = self.store.decisions([suggestion_id])
+        suggestion = found[0] if found else None
+        if getattr(suggestion, "decision_type", None) != "label_suggestion":
+            raise InvalidOperation(-1, f"{suggestion_id} is not a label suggestion")
+        targets = self.resolve_id(suggestion.entity_id)
+        if len(targets) != 1:
+            raise InvalidOperation(-1, f"{suggestion.entity_id} was split; label its parts")
+        return self.label(targets[0], suggestion.name, reason=reason,
+                          suggestion_id=suggestion_id, actor=actor)  # fmt: skip
+
+    def suggest_labels(self, entity_type: str, *, assistant=None, limit: int = 100) -> dict:
+        """Ask a model for display names for up to ``limit`` entities labelled in capitals or
+        lower case (design 08 §5.2). Records suggestions; changes nothing."""
+        from thisness.display_names import suggest
+
+        if assistant is None:
+            raise ValueError("suggest_labels needs a LabelAssistant")
+        return suggest(self, entity_type, assistant, limit=limit)
+
+    def label_suggestions(self, entity_ids: Sequence[str]):
+        """The latest name suggestion for each entity that has one."""
+        return self.store.label_suggestions(entity_ids)
+
+    def display_labels(self, entity_ids: Sequence[str]) -> dict[str, str]:
+        """Each entity's accepted display name, where one is set (design 08 §5.2)."""
+        return self.store.labels(entity_ids)
 
     def relate(self, subject: str, relation: str, object_: str, *, reason: str,
                evidence_ids: Sequence[str] = (), effective_from: date | None = None,

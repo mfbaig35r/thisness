@@ -121,8 +121,9 @@ def _features(name: str, values: Iterable[str]) -> list[Feature]:
 
 # A card or wallet descriptor: "SQ *", "TST* ", "PAYPAL *", "SP * ".
 PROCESSOR_PREFIX = r"^[A-Za-z]{2,7} ?\* ?(?=\S)"
-# Card statements cut descriptors at about 22 characters; a word ending there may be cut.
-DESCRIPTOR_LENGTH = 22
+# Card statements cut descriptors at 22 characters (25 on some networks): a descriptor of
+# exactly that length may end in a cut word; a longer or shorter one was not cut.
+DESCRIPTOR_LENGTHS = (22, 25)
 # Notes an ERP keeps in the name field, and the record status each means.
 NOTE_STATUS = {
     "do not use": "do_not_use", "dnu": "do_not_use", "inactive": "inactive",
@@ -188,7 +189,7 @@ def clean_name(raw: str) -> CleanedName:
         # Cut at the descriptor's length, the last word may be part of a word. It is kept
         # (dropping it made "SQ *LOW PROFILE FASHIO" read "Low Profile", another company)
         # and the name is marked, so it is never taken for a whole name (design 08 §13.3).
-        truncated = len(raw.strip()) >= DESCRIPTOR_LENGTH and len(text.split()) > 1
+        truncated = len(raw.lstrip()) in DESCRIPTOR_LENGTHS and len(text.split()) > 1
     if m := _NOTE_PREFIX.match(text):
         status = "inactive" if m.group("zz") else _status_of(m.group("word"))
         text = text[m.end() :]
@@ -217,7 +218,7 @@ def clean_name(raw: str) -> CleanedName:
 
 
 CLEANING = {
-    "processor_prefix": PROCESSOR_PREFIX, "descriptor_length": DESCRIPTOR_LENGTH,
+    "processor_prefix": PROCESSOR_PREFIX, "descriptor_lengths": DESCRIPTOR_LENGTHS,
     "note_status": NOTE_STATUS, "note_prefix": NOTE_PREFIX, "note_suffix": NOTE_SUFFIX,
     "note_suffix_guarded": NOTE_SUFFIX_GUARDED, "reference_words": REFERENCE_WORDS,
     "reference_suffix": REFERENCE_SUFFIX, "bare_number_suffix": BARE_NUMBER_SUFFIX,
