@@ -339,3 +339,57 @@ def names_only(benchmark, *, account_numbers: float = 0.25, seed: int = 0):
     if not isinstance(benchmark, Benchmark):
         return replace(benchmark, records=records, variant="names_only")
     return Benchmark(benchmark.seed, benchmark.organizations, records, variant="names_only")
+
+
+PROCESSORS = ("PAYPAL *", "SQ *", "TST* ", "SP * ", "PP*")
+NOTES_BEFORE = ("ZZ ", "*INACTIVE* ", "XX-")
+NOTES_AFTER = (" - DO NOT USE", " (OLD)", " - DUPLICATE OF {n}", " INACTIVE", " - USE VENDOR {n}")
+STORES = (" STORE {n}", " #{n}", " LOC {n}", " UNIT {n}", " - BLDG {n}")
+REFERENCES = (" (VENDOR {n})", " REF {n}", " A/C {n}")
+MESS = (
+    ("processor", 0.25),
+    ("note", 0.25),
+    ("store", 0.2),
+    ("reference", 0.15),
+    ("trade_name", 0.15),
+)
+
+
+def _mess(name: str, kind: str, rng: random.Random) -> str:
+    n = rng.randrange(10, 99_999)
+    if kind == "processor":
+        # A card descriptor: a processor prefix, capitals, often cut at the descriptor's
+        # length, so no rule can restore the rest of the name.
+        descriptor = rng.choice(PROCESSORS) + name.upper()
+        return descriptor[:22] if rng.random() < 0.5 else descriptor
+    if kind == "note":
+        if rng.random() < 0.4:
+            return rng.choice(NOTES_BEFORE) + name
+        return name + rng.choice(NOTES_AFTER).format(n=n)
+    if kind == "store":
+        return name + rng.choice(STORES).format(n=rng.randrange(2, 9_999))
+    if kind == "reference":
+        return name + rng.choice(REFERENCES).format(n=rng.randrange(1_000, 999_999))
+    words = name.split()
+    trade = " ".join(words[: max(1, min(2, len(words) - 1))])
+    return f"{name} {rng.choice(('DBA', 'dba', 'T/A'))} {trade}"
+
+
+def messy(benchmark, *, share: float = 0.35, seed: int = 0):
+    """Names-only records as real extracts write them (design 08 §8): on ``share`` of the
+    records, one of a payment-processor descriptor (half of them truncated), an ERP
+    note ("ZZ ", "DO NOT USE", "DUPLICATE OF 10233"), a store or location suffix, a
+    reference number, or a trade name ("Acme Holdings LLC dba Acme"). Apply it to a
+    names-only benchmark."""
+    rng = random.Random(f"{seed}|messy")
+    kinds, weights = zip(*MESS, strict=True)
+    records = []
+    for r in benchmark.records:
+        name = r.attributes["name"]
+        if rng.random() < share:
+            name = _mess(name, rng.choices(kinds, weights)[0], rng)
+        records.append(replace(r, attributes={"name": name}))
+    variant = f"{benchmark.variant}+messy" if benchmark.variant else "messy"
+    if not isinstance(benchmark, Benchmark):
+        return replace(benchmark, records=records, variant=variant)
+    return Benchmark(benchmark.seed, benchmark.organizations, records, variant=variant)

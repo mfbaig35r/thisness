@@ -36,7 +36,7 @@ What the rules must not remove: numbers that are part of a name ("3M", "7-Eleven
 Two things the rules find are kept rather than dropped:
 
 - **Notes are observation metadata.** "DO NOT USE" and "INACTIVE" say something about the vendor record, not the vendor. They become a `record_status` feature, shown on the record in the Workbench and in the export, never compared.
-- **Trade names are a second name.** "Acme Holdings LLC dba Acme Tools" and "T/A" forms yield two names for one record. The record's name stays as written; the trade name becomes an alias feature that candidate generation and the name comparison read as an additional value (decision 3).
+- **Trade names are a second name, but weak.** "Acme Holdings LLC dba Acme Tools" and "T/A" forms yield two names for one record. The record's name stays as written; the trade name becomes an alias feature that candidate generation reads, and the name comparison scores a match on it at a capped level (0 bits) and treats as a relationship signal: a trade name is often a group's brand, shared by sister companies (§13.2, decision 3).
 
 ## 4. Name cleaning by a model, only if the rules leave enough behind
 
@@ -102,7 +102,7 @@ A regression test fixes the rules' behaviour on a list of names that must and mu
 |---|---|---|
 | 1 | What to take from rewrite-and-hash pipelines | Cleaning and display names; not their identity rule (design 05 §11.5) |
 | 2 | Where cleaning lives | In the organization name normalizer, versioned; the raw name never changes |
-| 3 | Trade names ("dba", "t/a") | An alias feature read by candidates and the name comparison; the record's name stays as written |
+| 3 | Trade names ("dba", "t/a") | An alias feature read by candidates; matched only at a capped level (0 bits) and as a relationship signal, since a trade name is often a group's brand. The record's name stays as written (revised 2026-10-14, §13.2) |
 | 4 | Model cleaning | Deferred until the rules are measured; if built, as annotations (a new record type), never edits to observations |
 | 5 | Display names | Readable spelling by rule now; model suggestions accepted as a reversible ledger event |
 | 6 | Export | `thisness export mapping` and `engine.mapping()`, with `as_of_seq` |
@@ -127,3 +127,22 @@ Supplier classification (industry, commodity), web enrichment, and parent-subsid
 - **Status.** `in_review` when the record or its entity is a member of an open review; then `unresolved` (no entity), `provisional`, `resolved`. On the 46,565 UK records of design 07 §13.4, 69% of records are `in_review`: 2,629 boundary reviews are open there, and a boundary review holds every record of the entities it asks about. That is what the status says (those records' entity may still change), but an analyst may read it as doubt about the records themselves; a `review_id` column, so a report can group by the open question, is a small addition if it proves needed.
 - **Cost.** 40 ms for the 46,565 records, 70 ms as of an earlier point.
 - **Tests** (`test_mapping.py`): one row per record with its current entity and that entity's name; status agreeing with open reviews and entity states; a point before resolution (every record unresolved) and before ingest (no rows); a merge changing the mapping from its seq on and not before; the command in CSV and Parquet; the Workbench download, its 404 and its link.
+
+### 13.2 Step 2: the messy benchmark, and what mess costs
+
+- **The variant** (`messy()`, `thisness eval --names-only --messy`): on 35% of names-only records, one of a payment-processor descriptor ("SQ *", "TST* ", "PAYPAL *" and the name in capitals, half of them cut at 22 characters as card statements cut them), an ERP note ("ZZ ", "XX-", "*INACTIVE* ", "DO NOT USE", "(OLD)", "DUPLICATE OF n", "USE VENDOR n"), a store or location suffix, a reference number ("(VENDOR n)", "REF n", "A/C n"), or a trade name ("dba", "T/A" and the name's first one or two words). It applies to the synthetic and UK benchmarks alike, on top of the account numbers names-only already appends.
+- **Results** (gpt-6-luna; seeds 20261007 and 20261009; every model run recorded under `~/thisness-demo/messy`):
+
+  | Benchmark | Method | Clean P | Clean R | Messy P | Messy R | False merges, clean to messy | Reviews, clean to messy |
+  |---|---|---|---|---|---|---|---|
+  | Synthetic, 1,776 records | Fellegi-Sunter on names | 1.000 | .528 | 1.000 | .507 | 0 to 0 | 219 to 137 |
+  | | name-only plan | .985 | .968 | .987 | .865 | 6 to 5 | 20 to 21 |
+  | | rewrite, passes by name | .983 | .976 | .982 | .967 | 8 to 8 | |
+  | UK, 3,507 records | Fellegi-Sunter on names | .9996 | .344 | 1.000 | .335 | 1 to 0 | 466 to 340 |
+  | | name-only plan | .995 | .944 | .996 | .803 | 7 to 7 | 21 to 47 |
+  | | rewrite, passes by name | .996 | .949 | .986 | .923 | 6 to 28 | |
+
+- **Mess costs the name-only plan recall, not precision.** 10 points on the synthetic benchmark and 14 on the UK one, at the same precision. The collapse key no longer folds a name's variants together once one of them carries a descriptor or a note (UK nodes 1,574 to 2,524), so more of them reach the model as separate items, and some are never grouped. The UK run also made more than twice the calls ($0.15 to $0.32). This is what the rules of §3 are for: a cleaned key collapses them again before any model sees them.
+- **A model that cleans while it consolidates keeps recall and loses precision.** The rewrite baseline's false merges on the UK names went from 6 to 28. Read one by one, they are the cases §3 and §11 anticipated: a truncated descriptor ("TST* BRIDGEHAVEN EUROP") taken for a prefix of another company's name; numbered companies cleaned into one ("Intercede 2296 Ltd", "Intercede 2302 Ltd", "Intercede 2343 Limited"); a qualifier dropped ("BRIP 6 (Poole BC) LLP" and "BRIP 6 (Poole) LLP"); and trade names that are a group's brand ("BRIP 6 (POOLE) LLP dba BRIP 6"). It is the evidence for decision 4's rule that a model only cleans, and for the must-not-change list of §8.
+- **Decision 3 revised** (accepted 2026-10-14). A trade name as an alias the name comparison reads as a second name would merge sister companies that trade under one brand, as the last case shows. Proposed: the trade name is an alias feature that candidate generation reads, and the name comparison scores at a capped level (0 bits, like `token_subset`) and treats as a relationship signal, so two records sharing only a trade name are related until other evidence says they are the same.
+- **Tests** (`test_messy.py`): determinism and unchanged truth; the share of changed names and every kind of mess, truncated descriptors included; the UK variant; `--messy` requiring `--names-only`.

@@ -423,7 +423,7 @@ def _eval_rewrite(args: argparse.Namespace, bench) -> None:
 
 def cmd_eval(args: argparse.Namespace) -> int:
     from thisness.benchmark.evaluate import run_benchmark
-    from thisness.benchmark.organizations import names_only
+    from thisness.benchmark.organizations import messy, names_only
 
     if (args.reference or args.col) and args.type != "taxon":
         print("--reference and --col apply to taxa only", file=sys.stderr)
@@ -440,6 +440,9 @@ def cmd_eval(args: argparse.Namespace) -> int:
         return 1
     if args.save and Path(args.save).exists():
         print(f"{args.save} exists; choose another path", file=sys.stderr)
+        return 1
+    if args.messy and not args.names_only:
+        print("--messy applies to --names-only", file=sys.stderr)
         return 1
     if args.plan == "rewrite" and (args.save or args.type != "organization"):
         print("--plan rewrite scores organizations' names and keeps no store", file=sys.stderr)
@@ -460,6 +463,8 @@ def cmd_eval(args: argparse.Namespace) -> int:
                 bench = _generator(args.type)(n, seed=seed, **options)
             if args.names_only:
                 bench = names_only(bench)
+            if args.messy:
+                bench = messy(bench)
             if args.plan == "rewrite":
                 _eval_rewrite(args, bench)
                 continue
@@ -582,6 +587,8 @@ def parser() -> argparse.ArgumentParser:
     g.add_argument("--oracle-error", type=float, default=0.0)
     g.add_argument("--oracle-fold", type=float, default=0.0)
     s.add_argument("--names-only", action="store_true", help="the supplier-names benchmark")
+    s.add_argument("--messy", action="store_true",
+                   help="with --names-only: names as real extracts write them (design 08 §8)")  # fmt: skip
     s.add_argument("--reference", action="store_true", help="taxa only: WFO's own rows too")
     s.add_argument(
         "--source",
