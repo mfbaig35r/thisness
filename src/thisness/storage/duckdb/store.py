@@ -425,6 +425,26 @@ class DuckDBStore:
                 ", ".join(_FEATURE_COLUMNS),
             )
 
+    def feature_normalizers(self, entity_type: str) -> set[str]:
+        """The normalizer versions that wrote the stored features of a type."""
+        rows = self._con.execute(
+            "SELECT DISTINCT f.normalizer_ref FROM observation_features f "
+            "JOIN observations o USING (observation_id) WHERE o.entity_type = ?",
+            [entity_type],
+        ).fetchall()
+        return {r[0] for r in rows}
+
+    def replace_features(self, entity_type: str, batch: pa.Table) -> None:
+        """Every stored feature of a type, replaced by ``batch`` in one transaction."""
+        with self._transaction():
+            self._con.execute(
+                "DELETE FROM observation_features WHERE observation_id IN "
+                "(SELECT observation_id FROM observations WHERE entity_type = ?)",
+                [entity_type],
+            )
+            self._insert_arrow("observation_features", batch.select(_FEATURE_COLUMNS),
+                               _FEATURE_COLUMNS, ", ".join(_FEATURE_COLUMNS))  # fmt: skip
+
     def drop_features(self, normalizer_ref: str) -> None:
         with self._transaction():
             self._con.execute(

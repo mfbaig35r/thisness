@@ -103,6 +103,13 @@ class RunResult:
     stats: dict[str, Any] = field(default_factory=dict)
 
 
+def _fits(model: FSModel, profile: ResolutionProfile) -> bool:
+    """The model was fitted for the profile's comparisons and their levels as they are."""
+    return tuple(model.comparisons) == tuple(c.name for c in profile.comparisons) and all(
+        tuple(model.levels.get(c.name, ())) == tuple(c.levels) for c in profile.comparisons
+    )
+
+
 class Thisness:
     def __init__(
         self,
@@ -158,6 +165,18 @@ class Thisness:
             *profile.rules,
         ):
             self.store.register_component(component.ref, {})
+        self._refresh_features(profile)
+
+    def _refresh_features(self, profile: ResolutionProfile) -> None:
+        """Recompute a type's stored features when a normalizer has changed version since
+        they were written: a store built by an earlier release keeps working (0.2.0 changed
+        the organization name normalizer). Features are a projection of observations, so
+        this changes no identity state."""
+        stored = self.store.feature_normalizers(profile.entity_type)
+        if not stored or stored <= {n.ref.ref for n in profile.normalizers}:
+            return
+        observations = self.store.observations(self.store.observation_ids(profile.entity_type))
+        self.store.replace_features(profile.entity_type, profile.features(observations))
 
     def _profile(self, entity_type: str) -> ResolutionProfile:
         try:
@@ -207,6 +226,8 @@ class Thisness:
         """A fitted model if the type has one. Otherwise fit, once there are enough
         observations; until then, the profile's starter model (design 03 §21)."""
         current = self.model(entity_type)
+        if current is not None and not _fits(current, self._profile(entity_type)):
+            current = None  # fitted for other comparisons: an earlier release's model
         if current is not None and self.model_source(entity_type) == "fitted":
             return current
         if len(self.store.observation_ids(entity_type)) >= self.min_observations_to_fit:

@@ -63,7 +63,10 @@ thisness ui                              # the Workbench: entities, reviews, his
 thisness --store demo.duckdb demo && thisness ui demo.duckdb    # try it on synthetic data
 thisness --store people.duckdb demo --type person                # synthetic people
 thisness --store taxa.duckdb demo --type taxon --reference       # real plant names, labelled by WFO
+thisness export mapping > mapping.csv   # every record, its entity and the entity's name
 ```
+
+Supplier lists and spend extracts work as they are: payment-processor prefixes ("SQ *", "PAYPAL *"), store and reference numbers and ERP notes ("DO NOT USE", "ZZ ") are cleaned before names are compared, and a note becomes the record's status in the mapping. A model can suggest readable names for entities whose records are all in capitals (`thisness labels suggest`), which you accept or clear (design 08).
 
 The Workbench is a local web app over the same API: browse entities with the evidence for every value, answer the review queue by dragging records between entities, relate or merge entities that share a brand, page through possible relationships, and see exactly what a language model was given and what it answered.
 
@@ -132,6 +135,7 @@ The UK benchmark's hard cases are real: 62% of live UK companies share a registe
   - [05 the language-model layer](docs/design/05-m3-llm-layer.md)
   - [06 taxonomy, the third domain](docs/design/06-m4-taxonomy.md)
   - [07 real organizations](docs/design/07-m5-real-organizations.md)
+  - [08 supplier lists](docs/design/08-supplier-lists.md)
 - [Changelog](CHANGELOG.md)
 
 ## Development

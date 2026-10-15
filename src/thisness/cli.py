@@ -234,7 +234,10 @@ def cmd_export(args: argparse.Namespace) -> int:
     elif args.output:
         pacsv.write_csv(table, args.output)
     else:
-        pacsv.write_csv(table, sys.stdout.buffer)
+        try:
+            pacsv.write_csv(table, sys.stdout.buffer)
+        except BrokenPipeError:  # the reader stopped early (`| head`): not an error
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
     if args.output:
         print(f"{table.num_rows:,} rows to {args.output}", file=sys.stderr)
     return 0
