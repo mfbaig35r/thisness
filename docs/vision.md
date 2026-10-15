@@ -724,8 +724,8 @@ Its job is identity.
           ┌───────────────▼──────────────┐
           │      Semantic / Ontology     │
           │                              │
-          │ People • Companies • Risks  │
-          │ Contracts • Products • etc. │
+          │ People • Companies • Risks   │
+          │ Contracts • Products • etc.  │
           └───────────────┬──────────────┘
                           │
           ┌───────────────▼──────────────┐
@@ -742,8 +742,8 @@ Its job is identity.
           ┌───────────────▼──────────────┐
           │       Enterprise Data        │
           │                              │
-          │ DBs • Docs • Email • APIs   │
-          │ Video • Code • Warehouses   │
+          │ DBs • Docs • Email • APIs    │
+          │ Video • Code • Warehouses    │
           └──────────────────────────────┘
 ```
 
