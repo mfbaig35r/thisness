@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, NamedTuple
 
 from thisness.core.components import ComponentRef
 from thisness.core.observation import Observation
@@ -113,6 +113,118 @@ def _features(name: str, values: Iterable[str]) -> list[Feature]:
 # --- names ------------------------------------------------------------------------
 
 
+# --- cleaning (design 08 §3) --------------------------------------------------------------
+# What supplier extracts add to a name. Patterns are configuration: changing one is a new
+# normalizer version. Numbers inside a name ("Intercede 2296 Ltd", "Studio 54", "Omega
+# Holdings II", "No. 3") are never removed; only a trailing number after a separator or a
+# reference word, or a bare trailing number of five or more digits.
+
+# A card or wallet descriptor: "SQ *", "TST* ", "PAYPAL *", "SP * ".
+PROCESSOR_PREFIX = r"^[A-Za-z]{2,7} ?\* ?(?=\S)"
+# Card statements cut descriptors at about 22 characters; a word ending there may be cut.
+DESCRIPTOR_LENGTH = 22
+# Notes an ERP keeps in the name field, and the record status each means.
+NOTE_STATUS = {
+    "do not use": "do_not_use", "dnu": "do_not_use", "inactive": "inactive",
+    "deleted": "inactive", "blocked": "blocked", "old": "old", "obsolete": "old",
+    "duplicate": "duplicate", "dup": "duplicate", "use vendor": "use_other",
+    "use supplier": "use_other",
+}  # fmt: skip
+NOTE_PREFIX = r"^(?:(?P<zz>z{2,}|x{2,})[\s\-_.:*]+|\*\s*(?P<word>inactive|do not use|deleted|blocked)\s*\*\s*)"
+# Phrases that are a note wherever they end the name, and words that are one only when set
+# off by a separator or brackets ("Old Mutual" and "Smith Dup" keep theirs).
+NOTE_SUFFIX = (r"[\s,;:*]*[-\u2013(\[]?\s*(?P<note>do not use|dnu|inactive|deleted|blocked"
+               r"|duplicate(?:\s+of)?(?:\s*#?\s*\d+)?|use\s+(?:vendor|supplier)\s*#?\s*\d+)"
+               r"\s*[)\]*.]*\s*$")  # fmt: skip
+NOTE_SUFFIX_GUARDED = (r"\s*(?:[-\u2013:,]\s*|[(\[]\s*)(?P<note>old|obsolete|dup(?:\s+of)?\s*#?\s*\d*)"
+                       r"\s*[)\]]?\s*$")  # fmt: skip
+REFERENCE_WORDS = ("vendor", "vend", "supplier", "ref", "acct", "account", "a/c", "cust", "id")
+REFERENCE_SUFFIX = (r"\s*(?:[-#:]\s*#?\s*\d{3,}|\(\s*(?:%s)\.?\s*[:#]?\s*\d+\s*\)"
+                    r"|\b(?:%s)\.?\s*[:#]?\s*\d{3,})\s*$")  # fmt: skip
+BARE_NUMBER_SUFFIX = r"\s+\d{5,}\s*$"
+# Nothing in a name follows its legal form, so a number after one is a reference whatever
+# its length: "Amazon, Inc. 4411".
+AFTER_LEGAL_FORM = r"(?P<form>\b[A-Za-z][A-Za-z.]*)\.?,?\s+#?\d+\s*$"
+LOCATION_WORDS = ("store", "str", "loc", "location", "unit", "bldg", "building", "branch",
+                  "shop", "site", "plant", "dept")  # fmt: skip
+LOCATION_SUFFIX = r"[\s\-,]*\b(?:%s)\.?\s*#?\s*\d+[a-z]?\s*$"
+TRADE_NAME = r"\s+(?:d\s?/?\s?b\s?/?\s?a|t/a|trading as|a/k/a|aka)\.?\s+"
+
+_PROCESSOR = re.compile(PROCESSOR_PREFIX)
+_NOTE_PREFIX = re.compile(NOTE_PREFIX, re.I)
+_NOTE_SUFFIX = re.compile(NOTE_SUFFIX, re.I)
+_NOTE_SUFFIX_GUARDED = re.compile(NOTE_SUFFIX_GUARDED, re.I)
+_REFERENCE_WORDS = "|".join(map(re.escape, REFERENCE_WORDS))
+_REFERENCE = re.compile(REFERENCE_SUFFIX % (_REFERENCE_WORDS, _REFERENCE_WORDS), re.I)
+_BARE_NUMBER = re.compile(BARE_NUMBER_SUFFIX)
+_AFTER_LEGAL_FORM = re.compile(AFTER_LEGAL_FORM)
+_LOCATION = re.compile(LOCATION_SUFFIX % "|".join(LOCATION_WORDS), re.I)
+_TRADE = re.compile(TRADE_NAME, re.I)
+_TRAILING_JUNK = re.compile(r"[\s\-\u2013:,;#*]+$")
+
+
+class CleanedName(NamedTuple):
+    text: str  # the name to tokenize
+    trade_name: str | None  # "Acme Holdings LLC dba Acme Tools" -> "Acme Tools"
+    status: str | None  # what an ERP note said about the record
+    descriptor: bool  # a payment-processor descriptor
+    truncated: bool  # cut at a descriptor's length: its last word may be partial
+
+
+def _status_of(note: str) -> str:
+    note = re.sub(r"[\d#]+", "", note.casefold()).replace(" of", "").strip()
+    note = re.sub(r"\s+", " ", note)
+    return NOTE_STATUS.get(note, NOTE_STATUS.get(note.split(" ")[0], "inactive"))
+
+
+def clean_name(raw: str) -> CleanedName:
+    """What a supplier extract adds to a name, removed (design 08 §3). The raw name is never
+    changed; this only shapes the features. An empty result falls back to the raw name."""
+    text, status, trade = raw.strip(), None, None
+    descriptor = truncated = False
+    if m := _PROCESSOR.match(text):
+        descriptor = True
+        text = text[m.end() :]
+        # Cut at the descriptor's length, the last word may be part of a word. It is kept
+        # (dropping it made "SQ *LOW PROFILE FASHIO" read "Low Profile", another company)
+        # and the name is marked, so it is never taken for a whole name (design 08 §13.3).
+        truncated = len(raw.strip()) >= DESCRIPTOR_LENGTH and len(text.split()) > 1
+    if m := _NOTE_PREFIX.match(text):
+        status = "inactive" if m.group("zz") else _status_of(m.group("word"))
+        text = text[m.end() :]
+    if m := _TRADE.search(text):
+        text, trade = text[: m.start()], text[m.end() :].strip() or None
+    for _ in range(6):  # suffixes stack: "Ltd - 905952 STORE 4990", "Ltd 334750 (OLD)"
+        before = text
+        for pattern in (_NOTE_SUFFIX, _NOTE_SUFFIX_GUARDED):
+            if m := pattern.search(text):
+                status = status or _status_of(m.group("note"))
+                text = text[: m.start()]
+        for pattern in (_LOCATION, _REFERENCE, _BARE_NUMBER):
+            text = pattern.sub("", text)
+        if (m := _AFTER_LEGAL_FORM.search(text)) and m.group("form").replace(
+            ".", ""
+        ).casefold() in LEGAL_FORMS:
+            text = text[: m.end("form")]
+        text = _TRAILING_JUNK.sub("", text)
+        if text == before:
+            break
+    if trade:
+        trade = _TRAILING_JUNK.sub("", _REFERENCE.sub("", _LOCATION.sub("", trade))) or None
+    if not text.strip():
+        return CleanedName(raw.strip(), None, status, descriptor, False)
+    return CleanedName(text.strip(), trade, status, descriptor, truncated)
+
+
+CLEANING = {
+    "processor_prefix": PROCESSOR_PREFIX, "descriptor_length": DESCRIPTOR_LENGTH,
+    "note_status": NOTE_STATUS, "note_prefix": NOTE_PREFIX, "note_suffix": NOTE_SUFFIX,
+    "note_suffix_guarded": NOTE_SUFFIX_GUARDED, "reference_words": REFERENCE_WORDS,
+    "reference_suffix": REFERENCE_SUFFIX, "bare_number_suffix": BARE_NUMBER_SUFFIX,
+    "location_words": LOCATION_WORDS, "location_suffix": LOCATION_SUFFIX, "trade_name": TRADE_NAME,
+}  # fmt: skip
+
+
 def name_parts(raw: str) -> tuple[list[str], str | None]:
     """Canonical tokens of an organization name, and its legal form if it had one."""
     text = _fold(raw).replace("&", " and ")
@@ -149,20 +261,25 @@ def trigrams(key: str) -> list[str]:
 
 class OrganizationName:
     features = frozenset({"name.key", "name.tf_key", "name.tokens", "name.acronym",
-                          "name.trigram", "legal_form"})  # fmt: skip
+                          "name.trigram", "legal_form", "name.alias_key", "record_status",
+                          "name.truncated"})  # fmt: skip
+    # v3: names are cleaned first (design 08 §3); a trade name is an alias key; an ERP
+    # note is the record's status, never compared.
     ref = ComponentRef.of(
         "normalizer",
         "organization_name",
-        "2",
+        "3",
         {"legal_forms": LEGAL_FORMS, "token_canon": TOKEN_CANON,
-         "acronym_stopwords": sorted(ACRONYM_STOPWORDS), "confusables": CONFUSABLES},
+         "acronym_stopwords": sorted(ACRONYM_STOPWORDS), "confusables": CONFUSABLES,
+         "cleaning": CLEANING},
     )  # fmt: skip
 
     def normalize(self, observation: Observation) -> list[Feature]:
         raw = (observation.attributes or {}).get("name")
         if not isinstance(raw, str) or not raw.strip():
             return []
-        tokens, legal = name_parts(raw)
+        cleaned = clean_name(raw)
+        tokens, legal = name_parts(cleaned.text)
         if not tokens:
             return []
         key = "".join(tokens)
@@ -174,6 +291,14 @@ class OrganizationName:
             out.append(Feature("name.acronym", 0, "".join(t[0] for t in significant)))
         if legal:
             out.append(Feature("legal_form", 0, legal))
+        if cleaned.trade_name:
+            alias, _ = name_parts(cleaned.trade_name)
+            if alias and "".join(alias) != key:
+                out.append(Feature("name.alias_key", 0, "".join(alias)))
+        if cleaned.status:
+            out.append(Feature("record_status", 0, cleaned.status))
+        if cleaned.truncated:
+            out.append(Feature("name.truncated", 0, "1"))
         return out
 
 

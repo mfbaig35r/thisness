@@ -34,6 +34,14 @@ def _numbers(tokens: list[str]) -> list[str]:
     return [t for t in tokens if t.isdigit() or (_ROMAN.fullmatch(t) and t)]
 
 
+def _starts(cut: list[str], whole: list[str]) -> bool:
+    """``cut``, a name cut short, could be the start of ``whole``: its words lead it, the
+    last one possibly partial."""
+    if not cut or len(cut) > len(whole):
+        return False
+    return cut[:-1] == whole[: len(cut) - 1] and whole[len(cut) - 1].startswith(cut[-1])
+
+
 class NameComparison:
     """Token-aware: a shared brand with a different descriptor is its own level,
     never mistaken for a typo (design 03 §6.2 rule 3). Two names numbered differently
@@ -43,25 +51,34 @@ class NameComparison:
     real UK data it is mostly a parent and its subsidiary."""
 
     name = "name"
+    # "trade_name" is placed late so the term-frequency levels keep their indices (2, 5).
     levels = ("exact_key", "number_differs", "token_typo", "token_subset", "qualifier_differs",
-              "token_set_0.92", "acronym", "brand_only", "else")  # fmt: skip
-    features = ("name.key", "name.tokens", "name.acronym")
+              "token_set_0.92", "acronym", "brand_only", "trade_name", "truncated_prefix",
+              "else")  # fmt: skip
+    features = ("name.key", "name.tokens", "name.acronym", "name.alias_key", "name.truncated")
     attributes = frozenset({"name"})
     polarity: Mapping[str, Polarity] = {
         "exact_key": "supports", "number_differs": "contradicts", "token_typo": "supports",
         "token_subset": "neutral", "qualifier_differs": "contradicts",
         "token_set_0.92": "supports", "acronym": "supports",
-        "brand_only": "neutral", "else": "contradicts",
+        "brand_only": "neutral", "trade_name": "neutral", "truncated_prefix": "neutral",
+        "else": "contradicts",
     }  # fmt: skip
     token_jw = 0.90
     token_set = 92
-    ref = _ref("name", "4", {"levels": levels, "token_jw": token_jw, "token_set": token_set})
+    ref = _ref("name", "5", {"levels": levels, "token_jw": token_jw, "token_set": token_set})
 
     def compare(self, a: FeatureView, b: FeatureView) -> int | None:
         ka, kb = single(a, "name.key"), single(b, "name.key")
         if ka is None or kb is None:
             return None
         ta, tb = list(a.get("name.tokens", ())), list(b.get("name.tokens", ()))
+        # A card descriptor cut short is the start of some name, not a name: it can say
+        # which names it may be, never that it is one of them, even when two cut
+        # descriptors read alike (two companies can share 22 characters; design 08 §13.3).
+        cut_a, cut_b = bool(a.get("name.truncated")), bool(b.get("name.truncated"))
+        if (cut_a and _starts(ta, tb)) or (cut_b and _starts(tb, ta)):
+            return 9
         if ka == kb:
             return 0
         na, nb = _numbers(ta), _numbers(tb)
@@ -102,9 +119,15 @@ class NameComparison:
             return 5
         if single(a, "name.acronym") == kb or single(b, "name.acronym") == ka:
             return 6
+        # One trades under the other's name, or both under one: often a group's brand
+        # shared by sister companies, so a relationship signal, capped by the profile
+        # (design 08 §13.2, decision 3).
+        aa, ab = single(a, "name.alias_key"), single(b, "name.alias_key")
+        if (aa is not None and aa in (kb, ab)) or (ab is not None and ab == ka):
+            return 8
         if ta and tb and ta[0] == tb[0] and len(ta) > 1 and len(tb) > 1:
             return 7
-        return 8
+        return 10
 
 
 class _SetComparison:

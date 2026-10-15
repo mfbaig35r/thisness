@@ -56,6 +56,52 @@ class MostFrequentValue:
         return result
 
 
+class ReadableSpelling:
+    """Most frequent value for every attribute, but for ``attribute`` the most readable
+    spelling of its most supported key (design 08 §5.1): among the records whose name has
+    the entity's most frequent key, a spelling the key function needed to clean nothing
+    from, then one in mixed case (most of its words with a lower-case letter), then the
+    most frequent. "HALEON UK FINANCE LIMITED" (3)
+    and "Haleon Uk Finance Limited" (1) share a key; the label is the second. When every
+    spelling carried something cleaned off ("SQ *ACME"), the label is the cleaned text."""
+
+    def __init__(self, attribute: str, key: Any, ref_name: str, version: str = "1") -> None:
+        self.attribute = attribute
+        self.key = key  # raw value -> (key, cleaned text) or None
+        self.base = MostFrequentValue()
+        self.ref = ComponentRef.of("canonicalizer", ref_name, version, {"attribute": attribute})
+
+    def build(self, observations: Sequence[Observation]) -> dict[str, JsonValue]:
+        result = self.base.build(observations)
+        ordered = sorted(observations, key=lambda o: o.observation_id)
+        spellings: list[tuple[str, str, str]] = []  # key, raw, cleaned
+        for obs in ordered:
+            raw = (obs.attributes or {}).get(self.attribute)
+            if isinstance(raw, str) and (found := self.key(raw)) is not None:
+                spellings.append((found[0], raw, found[1]))
+        if not spellings:
+            return result
+        keys = Counter(k for k, _, _ in spellings)
+        first = {k: i for i, (k, _, _) in reversed(list(enumerate(spellings)))}
+        best = min(keys, key=lambda k: (-keys[k], first[k]))
+        mine = [(raw, cleaned) for k, raw, cleaned in spellings if k == best]
+        counts = Counter(raw for raw, _ in mine)
+        order = {raw: i for i, (raw, _) in reversed(list(enumerate(mine)))}
+
+        def readable(item: tuple[str, str]) -> tuple:
+            raw, cleaned = item
+            # Written in mixed case: most of its words have a lower-case letter, so a
+            # capitals name with "Ltd." on the end does not count (design 08 §13.3).
+            words = [w for w in raw.split() if sum(c.isalpha() for c in w) > 1]
+            lower = sum(any(c.islower() for c in w) for w in words)
+            mixed = bool(words) and lower * 2 > len(words) and raw != raw.lower()
+            return (raw.strip() != cleaned, not mixed, -counts[raw], order[raw])
+
+        raw, cleaned = min(set(mine), key=readable)
+        result[self.attribute] = raw if raw.strip() == cleaned else cleaned
+        return result
+
+
 class ByProfile:
     """Each entity type's own canonicalizer (design 06 §6), else most frequent value. The
     store records the canonicalizer that actually built each snapshot (``pick``)."""

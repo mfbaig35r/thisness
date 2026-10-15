@@ -939,9 +939,12 @@ class DuckDBStore:
                         WHEN mem.entity_id IS NULL THEN 'unresolved'
                         WHEN provisional.entity_id IS NOT NULL THEN 'provisional'
                         ELSE 'resolved' END AS status,
-                   CAST(NULL AS VARCHAR) AS record_status,
+                   status.record_status,
                    mem.valid_from_seq AS since_seq, mem.basis_decision_id AS decision_id
             FROM obs LEFT JOIN mem USING (observation_id)
+            LEFT JOIN (SELECT observation_id, max(value) AS record_status FROM observation_features
+                       WHERE feature = 'record_status' GROUP BY observation_id) status
+              USING (observation_id)
             LEFT JOIN snap ON snap.entity_id = mem.entity_id
             LEFT JOIN provisional ON provisional.entity_id = mem.entity_id
             ORDER BY obs.observation_id

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from thisness.candidates import CrossFeature, ExactValue, Overlap, RareValue
+from thisness.canonicalize import ReadableSpelling
 from thisness.comparisons.organization import (
     DomainComparison,
     LegalFormComparison,
@@ -13,7 +14,14 @@ from thisness.comparisons.organization import (
     SameRegistration,
 )
 from thisness.fellegi_sunter import TermFrequency
-from thisness.normalize.organization import Domains, Location, OrganizationName, RegistrationIds
+from thisness.normalize.organization import (
+    Domains,
+    Location,
+    OrganizationName,
+    RegistrationIds,
+    clean_name,
+    name_parts,
+)
 from thisness.profiles.base import AttributeDefinition, FeatureConflict, ResolutionProfile
 
 ATTRIBUTES = {
@@ -46,6 +54,13 @@ HINTS = """\
 - Different registration identifiers in the same scheme mean different organizations."""
 
 
+def _name_key(raw: str) -> tuple[str, str] | None:
+    """A name's key and its cleaned text, for choosing the entity's label."""
+    cleaned = clean_name(raw).text
+    tokens, _ = name_parts(cleaned)
+    return ("".join(tokens), cleaned) if tokens else None
+
+
 def organization(version: str = "1") -> ResolutionProfile:
     return ResolutionProfile(
         entity_type="organization",
@@ -60,6 +75,9 @@ def organization(version: str = "1") -> ResolutionProfile:
             ExactValue("name_key", "name.key", NAME, max_block=100),
             RareValue("rare_token", "name.tokens", NAME, per_observation=2, max_df=60),
             CrossFeature("acronym", "name.acronym", "name.key", NAME, max_block=50),
+            # A trade name proposes the company it names, and its sisters under one brand.
+            CrossFeature("trade_name", "name.alias_key", "name.key", NAME, max_block=50),
+            ExactValue("shared_trade_name", "name.alias_key", NAME, max_block=50),
             Overlap("trigram", "name.trigram", NAME, min_share=0.6, max_df=150),
         ),
         comparisons=(NameComparison(), RegistrationComparison(), DomainComparison(),
@@ -73,9 +91,11 @@ def organization(version: str = "1") -> ResolutionProfile:
         # real UK data: no evidence of identity, a sign of a relationship (design 07
         # §13.2). Capped at 2 bits, it still tipped such pairs over T_high at 5,000
         # companies, where a shared postcode weighs more.
-        weight_caps={"name": {"brand_only": 0.0, "token_subset": 0.0, "qualifier_differs": 0.0},
+        weight_caps={"name": {"brand_only": 0.0, "token_subset": 0.0, "qualifier_differs": 0.0,
+                              "trade_name": 0.0, "truncated_prefix": 0.0},
                      "domain": {"exact": 4.0}},
-        relationship_levels=frozenset({("name", "brand_only"), ("name", "token_subset"), ("name", "qualifier_differs")}),
+        relationship_levels=frozenset({("name", "brand_only"), ("name", "token_subset"),
+                                       ("name", "qualifier_differs"), ("name", "trade_name")}),
         # Frequency is looked up on the confusable-folded key (design 03 §21).
         # A name shared by many companies is weak evidence, and so is a postcode: 62% of
         # live UK companies share their registered address, a fifth of them with a
@@ -94,6 +114,8 @@ def organization(version: str = "1") -> ResolutionProfile:
         # Tuned on the benchmark for cluster-level false merges (design 03 §21).
         min_strong_weight=12.0,
         starter_model="organization_starter.json",
+        # The label: the readable spelling of the most supported name (design 08 §5.1).
+        canonicalizer=ReadableSpelling("name", _name_key, "organization_name"),
         prompt_hints=HINTS,
         # gpt-6-luna on 805 organizations: R .888 -> .981 for 3 more false-merge clusters.
         model_role="decide",

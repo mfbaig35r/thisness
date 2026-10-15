@@ -47,7 +47,6 @@ from thisness.normalize.organization import LEGAL_FORMS
 if TYPE_CHECKING:
     from thisness.engine import RunResult, Thisness
 
-ACCOUNT_NUMBER = re.compile(r"^\d{3,}$")
 VERDICTS = {"strong": Verdict.MATCH, "negative": Verdict.NO_MATCH,
             "contested": Verdict.POSSIBLE_MATCH, "unverified": Verdict.POSSIBLE_MATCH,
             "cannot_link": Verdict.NO_MATCH}  # fmt: skip
@@ -91,12 +90,15 @@ class NameOnlyPlan:
 
 
 def collapse_key(view: dict[str, list[str]]) -> str | None:
-    """The organization name key without appended account or reference numbers, with
-    its legal form: "Premier Services GmbH" and "Premier Services LLC" stay apart for the
-    model to judge, since collapsing is deterministic and nothing can undo it within the
-    run (design 01 §12, question 2). Numbers are dropped first, so "Amazon, Inc. 4411"
-    has the legal form "inc" like "Amazon Inc"."""
-    tokens = [t for t in view.get("name.tokens", ()) if not ACCOUNT_NUMBER.match(t)]
+    """The organization name key with its legal form: "Premier Services GmbH" and
+    "Premier Services LLC" stay apart for the model to judge, since collapsing is
+    deterministic and nothing can undo it within the run (design 01 §12, question 2).
+    The key is the cleaned name's (design 08 §3), so "Amazon, Inc. - 4411" and "SQ *AMAZON
+    INC" collapse with "Amazon Inc" while "Intercede 2296 Ltd" and "Intercede 2302 Ltd",
+    numbered companies, stay apart."""
+    if view.get("name.truncated"):
+        return None  # a descriptor cut short may be any of several names: its own node
+    tokens = list(view.get("name.tokens", ()))
     legal = list(view.get("legal_form", ())[:1])
     stripped = []
     while len(tokens) > 1 and tokens[-1] in LEGAL_FORMS:
@@ -239,7 +241,10 @@ def resolve(engine: Thisness, profile, scope: list[str], plan: NameOnlyPlan, *,
         snapshot = engine.get_entity(entity)[1]
         shown[entity] = str(snapshot.attributes.get("name", entity)) if snapshot else entity
     nodes = sorted(shown)
-    order = sorted(nodes, key=lambda n: (_sort_key(shown[n]), n))
+    # Windows follow the cleaned name where there is one, so "SQ *HOWDEN JOINERY" sits
+    # beside "Howden Joinery" rather than among the S's (design 08 §13.3).
+    keys = {n: (features.get(n, {}).get("name.key") or [None])[0] for n in nodes}
+    order = sorted(nodes, key=lambda n: (keys[n] or _sort_key(shown[n]), n))
 
     # 2-4. Stages.
     proposals: list[GroupProposal] = []
