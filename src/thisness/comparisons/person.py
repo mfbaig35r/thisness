@@ -16,35 +16,47 @@ def _ref(name: str, version: str, config: dict) -> ComponentRef:
     return ComponentRef.of("comparison", name, version, config)
 
 
-def _similar(x: str, y: str, threshold: float) -> bool:
-    return x == y or soundex(x) == soundex(y) or JaroWinkler.similarity(x, y) >= threshold
+def _similar(x: str, y: str, threshold: float, soundex_floor: float = 0.0) -> bool:
+    """Equal, close by Jaro-Winkler, or alike by Soundex. ``soundex_floor`` asks a Soundex
+    match to be somewhat close too: Soundex alone pairs "Buchanan" with "Beckmann" and
+    "John" with "Jami" (design 09 §11.5)."""
+    if x == y:
+        return True
+    jw = JaroWinkler.similarity(x, y)
+    return jw >= threshold or (soundex(x) == soundex(y) and jw >= soundex_floor)
 
 
 class PersonNameComparison:
     """Most specific level first. The middle initial and generational suffix separate
     'John A. Smith' from 'John B. Smith' and a father from a son; a family name that
     differs with the given name agreeing is its own level, since people change family
-    names on marriage. A family-first name's other reading (``pname.alt``, a compound
+    names on marriage. A generational suffix on one side only ("Robert F Shuford" and
+    "Robert F Shuford Jr") is its own level: the records cannot tell a dropped suffix from
+    a father and son, often at one company and one address (design 09 §11.5). A
+    family-first name's other reading (``pname.alt``, a compound
     family name) that agrees with the other side counts as ``fuzzy``, like a given and
     family name swapped (design 09 §3)."""
 
     name = "name"
     levels = ("exact", "given_family", "alias", "initial", "fuzzy", "middle_conflict",
-              "given_only", "family_only", "else")  # fmt: skip
+              "given_only", "family_only", "suffix_one_side", "else")  # fmt: skip
     features = ("pname.given", "pname.family", "pname.groups", "pname.middle", "pname.suffix",
                 "pname.alt")  # fmt: skip
     attributes = frozenset({"name", "given_name", "family_name", "name_order"})
     polarity: Mapping[str, Polarity] = {
         "exact": "supports", "given_family": "supports", "alias": "supports",
         "initial": "supports", "fuzzy": "supports", "middle_conflict": "contradicts",
-        "given_only": "neutral", "family_only": "contradicts", "else": "contradicts",
+        "given_only": "neutral", "family_only": "contradicts", "suffix_one_side": "neutral",
+        "else": "contradicts",
     }  # fmt: skip
     jw = 0.88
-    ref = _ref("person_name", "2", {"levels": levels, "jw": jw, "alt_level": "fuzzy"})
+    soundex_floor = 0.8
+    ref = _ref("person_name", "2", {"levels": levels, "jw": jw, "alt_level": "fuzzy",
+                                    "soundex_floor": soundex_floor})  # fmt: skip
 
     def compare(self, a: FeatureView, b: FeatureView) -> int | None:
         level = self._primary(a, b)
-        if level is not None and level >= 6 and (_alt_agrees(a, b) or _alt_agrees(b, a)):
+        if level in (6, 7, 9) and (_alt_agrees(a, b) or _alt_agrees(b, a)):
             return 4
         return level
 
@@ -59,7 +71,12 @@ class PersonNameComparison:
         suffix_ok = not sa or not sb or sa == sb
         alias = bool(values(a, "pname.groups") & values(b, "pname.groups"))
         initial = (len(ga) == 1 or len(gb) == 1) and ga[0] == gb[0]
+        # A near match with a different middle initial or suffix is as much a conflict as
+        # an exact one: "Erik J Anderson" and "Eric R. Anderson" (design 09 §11.5).
+        fuzzy = 4 if middle_ok and suffix_ok else 5
         if fa == fb:
+            if (ga == gb or alias or initial) and middle_ok and suffix_ok and bool(sa) != bool(sb):
+                return 8  # one side says Jr: the same person, or a father and son
             if ga == gb:
                 if not (middle_ok and suffix_ok):
                     return 5
@@ -70,17 +87,19 @@ class PersonNameComparison:
                 return 2
             if initial:
                 return 3
-            if _similar(ga, gb, self.jw):
-                return 4
+            if _similar(ga, gb, self.jw, self.soundex_floor):
+                return fuzzy
             return 7
         if ga == fb and fa == gb:
-            return 4  # given and family swapped
+            return fuzzy  # given and family swapped
         given_match = ga == gb or alias
-        if _similar(fa, fb, self.jw) and (given_match or _similar(ga, gb, self.jw)):
-            return 4
+        if _similar(fa, fb, self.jw, self.soundex_floor) and (
+            given_match or _similar(ga, gb, self.jw, self.soundex_floor)
+        ):
+            return fuzzy
         if given_match:
             return 6
-        return 8
+        return 9
 
 
 def _alt_agrees(a: FeatureView, b: FeatureView) -> bool:

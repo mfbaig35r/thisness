@@ -5,6 +5,12 @@
 Real people (design 09).
 
 - **Name order.** A person record's `name_order` attribute (`given_first`, the default, or `family_first`) says how its source writes a name without a comma; registries such as SEC EDGAR write "SMITH JOHN A JR". A family-first name of three words or more also gets the reading with a compound family name ("Pineyro Sublett Carla" as Carla Pineyro Sublett), which proposes candidates and counts as a `fuzzy` name match. A family-first name is also a blocking key with its order swapped, since registries are not always consistent. Person name normalizer and comparison version 2; the person starter model is rebuilt. Given-first names are unaffected.
+- **Person name comparison** (version 2) also:
+  - asks a Soundex match to be close by Jaro-Winkler (.8), since Soundex alone pairs "Buchanan" with "Beckmann";
+  - makes a near match with a different middle initial or suffix a `middle_conflict`, as an exact one is;
+  - gives a suffix on one side only its own level, `suffix_one_side`, capped at 4 bits: a dropped "Jr" and a father and son at one company look the same, so such pairs go to review.
+
+  The `initial` level is capped at 8 bits. On 10,000 real people, false-merge clusters fall from 51 to 29 (precision .9967 to .9985, recall .726 to .715).
 - **Given name and employer** is a new person blocking key (`given_employer`): where there is no date of birth, it finds family names that changed or were mistyped. Colleagues share employers, so EM does not learn from its pairs.
 - **Benchmarks.** `python -m thisness.benchmark edgar-stage --store PATH` stages SEC Section 16 insiders from an edgar-persons-pool store; `edgar-truth` and `edgar-audit` measure the CIK as truth; `thisness eval --type person --source edgar` runs the benchmark: real people and namesakes, each with their EDGAR records and up to three records from other systems written as those write people (nicknames, initials, dropped suffixes, typos, former names, employers without their legal form). A fixture of about 150 insiders ships for tests. `thisness eval --assistant` has the review assistant answer every review a run leaves open and scores its suggestions against the truth (`benchmark.evaluate.recommendation_accuracy`). On 1,000 real people gpt-6-luna deciding pairs raised false-merge clusters from 2 to 18, while its review suggestions were right 86% of the time; people keep `model_role="suggest"`.
 

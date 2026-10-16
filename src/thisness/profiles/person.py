@@ -111,7 +111,12 @@ def person(version: str = "1") -> ResolutionProfile:
         # land on them, so the m floor alone would make them look like support.
         weight_caps={"phone": {"exact": 4.0}, "address": {"exact": 3.0},
                      "employer": {"exact": 2.0},
-                     "name": {"middle_conflict": -4.0, "family_only": -6.0}},
+                     "name": {"middle_conflict": -4.0, "family_only": -6.0, "initial": 8.0,
+                              # Neither alone is a match (design 09 §11.5): an initial
+                              # and a family name, or a suffix on one side only, which
+                              # a father and son at one company share with employer
+                              # and city; with those it reaches review, not a merge.
+                              "suffix_one_side": 4.0}},
         relationship_patterns=(
             RelationshipPattern("household", (("name", "family_only"), ("address", "exact"))),
             RelationshipPattern("same_birth_date", (("name", "family_only"),

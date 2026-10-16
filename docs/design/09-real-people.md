@@ -1,6 +1,6 @@
 # Design 09: real people, from SEC EDGAR
 
-Status: accepted 2026-10-15, with the recommendations in section 9.
+Status: accepted 2026-10-15, with the recommendations in section 9. Complete 2026-10-16 at step 5 (§11.5).
 
 Builds on: design 04 (the Person profile), design 06 §10.8 to §10.10 (models on people), design 07 (real organizations, whose method this follows) and the edgar-persons-pool store as of its commit 2452789.
 
@@ -250,3 +250,45 @@ The 26 merges are the hardest real cases:
 - The assistant's suggestions are as reliable as on synthetic people, and a person accepts or rejects each one.
 
 The guidance hint above is the lever if people are ever to be decided by a model. Design 06 §10.9 tried a stricter one, which made luna unsure of nearly everything; on real data a narrower rule (a common name with no shared employer, place or identifier is not evidence) is worth one run. Not done here.
+
+### 11.5 Step 5: scale (evaluation 4)
+
+No model, seed 11, `thisness eval --type person --source edgar --size N --seeds 11`, timed with `/usr/bin/time -l`.
+
+**At the start of the step**, 10,000 people (28,692 records) gave:
+- precision .9967, recall .726, 51 false-merge clusters, 3,741 reviews;
+- 73 s and 1.9 GB peak resident memory.
+
+False merges grew with size (2, 10 and 51 at 1,000, 3,000 and 10,000) as namesakes multiply. Read one by one, the 51 came from four faults in the person profile; three are fixed:
+
+1. **Soundex alone made a near match.** "Buchanan" and "Beckmann" share Soundex B255, "John" and "Jami" J500, "DeFao" and "Duffy" D100. The comparison called two names fuzzy when Jaro-Winkler or Soundex agreed.
+   - A Soundex match now needs Jaro-Winkler .8 as well (`soundex_floor`). True pairs that rely on Soundex score .805 or more (Sean and Shawn); the false ones .775 or less.
+   - Alone it moved nothing (51 to 52): with fewer false fuzzy pairs, EM trusts the level more (11.1 to 12.7 bits).
+2. **`initial` outweighed an exact name.** EM fitted it at 15.1 bits against 14.0 for an exact name, from few examples. "D M. Wilson" merged with "Davd Wilson" on that alone, and EDGAR's "JACOBS M CHRISTINE" (given name M) with "Michael Jacobs".
+   - It is capped at 8 bits: an initial and a family name are not a match without something else.
+   - Effect: 45 false merges, recall .735.
+3. **A suffix on one side only** (step 2's open case): a father and son at one company, the son's record written without "Jr" ("SHUFORD ROBERT F" and "SHUFORD ROBERT F JR"; Dorrance at Campbell's; Ryan at Ryan Specialty; Kidd at Central Securities). With employer and city that is 20 bits.
+   - It is now its own name level, `suffix_one_side`, capped at 4 bits. With employer and city such a pair reaches review, not a merge. The records cannot tell a dropped suffix from a second generation; a person can.
+   - Effect: 32 false merges, recall .714, reviews 4,050.
+4. **A fuzzy match ignored the middle initial.** "Erik J Anderson" and "Eric R. Anderson", "WALDROP WILLIAM H" and "WALTERS WILLIAM THURMAN" were fuzzy where an exact or alias match with those middles is `middle_conflict`. A fuzzy match with a different middle initial or suffix is now `middle_conflict` too. Effect: 29 false merges.
+
+Person name comparison version 2 (still unreleased) carries all four. The person starter model is rebuilt, and the synthetic person benchmark is as good as it was: recall .7231 to .7163 on seed 11, .6979 to .6978 on seed 12, false merges unchanged at 4 and 2.
+
+**Results, no model:**
+
+| People | Records | B3 precision | B3 recall | False-merge clusters | Reviews | Pairs unasked | Time | Peak memory |
+|---|---|---|---|---|---|---|---|---|
+| 1,000 | 2,893 | 1.0000 | .521 | 0 | 641 | 176 | 8 s | 0.6 GB |
+| 3,000 | 8,613 | .9993 | .609 | 4 | 1,582 | 244 | 16 s | 1.0 GB |
+| 10,000 | 28,692 | .9985 | .715 | 29 | 4,059 | 2,192 | 67 s | 2.5 GB |
+| 10,000, oracle deciding | 28,692 | .9992 | .948 | 15 | 592 | 0 | 93 s | 2.9 GB |
+
+- **Recall rises with size** (.52, .61, .72): EM has more pairs to learn from. At 1,000 people the profile merged nothing wrongly; the step 4 run at that size had 2 false merges and recall .526.
+- **The 29 left at 10,000** are mostly what the records cannot settle:
+  - a son's record whose "Jr" the generator dropped, identical to his father's ("Claiborne R Rankin" and "RANKIN CLAIBORNE R" at Hyster-Yale);
+  - one common name in one city at two employers (exact name and city, 17 bits);
+  - names mistyped on both sides.
+  - The oracle's 15 are among them: their evidence is above T_high, so no reviewer is asked.
+- **Reviews grow about linearly** (one per seven records), and boundary reviews stay bounded (design 07 §13.4): 2,192 contested pairs at 10,000 were not asked because they would have joined two full reviews.
+- **Memory** is 2.5 GB at 28,692 records and 108,213 scored pairs, against 7.8 GB for 46,565 organization records (design 07 §13.4). Scoring still holds every candidate pair's row in Python; at this size that is not yet the constraint.
+- Step 4's cassettes record requests built with the old comparison levels. Replayed now, 3,809 of the decide cassette's 3,865 pairs find no matching request. Step 4's numbers stand as measured at 2d66482; a new run would need new calls (about $0.80 for both).

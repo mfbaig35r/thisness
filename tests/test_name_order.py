@@ -103,3 +103,28 @@ def test_given_name_and_employer_block_without_a_birth_date():
         f["pname.given_employer"]
         == features(name="Julie Smith", employer="STIFEL FINANCIAL CORP")["pname.given_employer"]
     )
+
+
+@pytest.mark.parametrize(
+    ("a", "b", "level"),
+    [
+        # A suffix on one side only: a dropped "Jr", or a father and son.
+        ("Robert F Shuford Jr", "Robert F Shuford", "suffix_one_side"),
+        ("Bob Shuford Jr", "Robert Shuford", "suffix_one_side"),
+        ("John Smith Jr.", "John Smith Sr.", "middle_conflict"),  # both: a conflict
+        # A near match with a different middle initial is a conflict, as an exact one is.
+        ("Erik J Anderson", "Eric R. Anderson", "middle_conflict"),
+        ("William H Waldrop", "William T Walters", "middle_conflict"),
+        ("Erik Anderson", "Eric R. Anderson", "fuzzy"),
+        # Soundex alone is not a near match.
+        ("John Buchanan", "Jami Beckmann", "else"),
+        ("Sean Murphy", "Shawn Murphy", "fuzzy"),
+    ],
+)
+def test_suffixes_middles_and_soundex(a, b, level):
+    assert NAME.levels[NAME.compare(features(name=a), features(name=b))] == level
+
+
+def test_an_initial_or_a_one_sided_suffix_is_never_a_match_alone():
+    caps = person().weight_caps["name"]
+    assert caps["initial"] <= 8.0 and caps["suffix_one_side"] <= 4.0
