@@ -88,3 +88,47 @@ As design 07 did before its first measurement:
 - **Synthetic records on real people** test the generator's idea of how other systems write names, as design 07's supplier records did. The measured gains are on that; a real second source (a board list, a proxy statement) would be a stronger test, out of scope here.
 - **Business addresses and employers are strong and shared**: two different directors of one issuer share both. Namesakes at one company (a father and son on one board) are the hardest real case, and the profile's generational-suffix constraint is what separates them.
 - **Compound family names** may defeat the alternative split; the audit's sample and evaluation 2 show how often.
+
+## 11. Implementation notes
+
+### 11.1 Step 1: staging and the truth audit
+
+`python -m thisness.benchmark edgar-stage --store PATH` attaches the edgar-persons-pool store read only and writes `~/.cache/thisness/edgar/edgar.duckdb` in under two seconds: 107,860 people (individual, confidence 0.85 or more, at least one Section 16 role), 326,531 names from three sources (section16, submissions, cik_lookup), 2,115 former names, 157,433 roles, and 154,839 city and state rows with filing counts. No street, no postal code; a `meta` table records the source store, the time and the classifier version (2). `edgar-truth` and `edgar-audit` report and sample; `benchmark.edgar.truth()` is the truth the generator will use.
+
+**Spellings.** Counted on letters only (cik_lookup writes capitals, the filings mixed case), 106,077 CIKs (98.3%) have one spelling, 1,724 two, 59 three or more. The second spellings are what the benchmark wants: middle names added or dropped ("Hennemuth Robert" and "Hennemuth Robert George"), typos ("Woelkers Pau C." and "Woelkers Paul C."), suffixes moved ("DAY II ROWLAND W" and "DAY ROWLAND W II"). EDGAR's own namesake marker, a slash and a state ("MCDONALD JOHN D/MO"), appears on 41 CIKs and is stripped before comparing.
+
+**Shared names.** 2,845 name keys (token sets, initials and suffixes ignored) are held by 6,564 CIKs, giving 5,106 pairs. The key is loose on purpose; the pairs were split by name and then by evidence, and samples of each read:
+
+| Pairs | Count | What they are, read |
+|---|---|---|
+| Conflicting names (different initials, or a suffix on one) | 3,571 | different people: "Walsh Robert B" and "WALSH ROBERT T.", "PENSKE ROGER S" and "Penske Roger S Jr" |
+| Compatible names, a shared issuer | 33 | one person with two CIKs, every pair read apart from two Hyatt trusts (left out as not people): "ROLLINS RANDALL R" and "ROLLINS R RANDALL" (Rollins Inc), "Carter Miller Jocelyn" and "Carter-Miller Jocelyn" (Interpublic, Backblaze), "Li Ka Shing" and "SHING LI KA" (ChromaDex) |
+| Compatible names, a shared city only | 35 | either: one person whose issuer renamed itself ("Corbus Barclay", Bed Bath & Beyond and Beyond Inc), compound family names reordered ("Pineyro Sublett Carla" and "Sublett Carla Pineyro"), namesakes in a large city ("Zhang Wei", New York) |
+| Compatible names, nothing shared | 1,467 | different people: none of 40 read was clearly one person, most with different careers ("Johnson Allison", PayPal marketing and a Pennsylvania bank CFO) |
+
+**One CIK, unrelated names.** 21 CIKs carry two names that share no word. They are not mostly two people:
+- 12 are one person renamed: marriage ("ISBELL JERI L" and "STROMQUIST JERI I"), typos corrected ("NEUKERNONS ARNAND"), nicknames and transliterations ("MEYER SOL" and "Mayer Solomon", "Markowiecki Bartek" and "Makowiecki Bartlomiej", "Bakalova Sofya" and "Garnette Sophia").
+- 5 look like a CIK handed to another person, CIK 0001706713 among them; one ("West Shauna Faegre Drinker Biddle & Reath LLP" to "Varma Atul") was opened in a lawyer's name.
+- 1 has an entity's former name.
+- 3 are entities.
+
+**Not people.** About 35 names the edgar-persons-pool classifier (v2) passes as individuals are entities:
+- Danish ApS, Norwegian AS, French SAS and SCS;
+- grantor trusts ("RF 2018 GRAT");
+- SPAC sponsors;
+- "GOULD INVESTORS L P".
+
+A rule on those words and on digits finds them. The digit rule also catches 4 people whose EDGAR name carries a number ("Xu Lin 1962", "Isett Thomas Francis 3rd"). The classifier gap is edgar-persons-pool's to fix.
+
+**The truth** (`edgar.truth`), from the above:
+- **Left out:**
+  - names that are not people (35);
+  - CIKs with unrelated names (18 after the entities), since telling the renamed from the reassigned takes reading;
+  - both CIKs of the 35 compatible pairs linked only by a city (70).
+- **Merged:** the 33 compatible pairs at a shared issuer.
+- **Result:** 107,737 CIKs kept, 107,705 people.
+- **Different people:** everything else. That is wrong for an unknown few of the 1,467 compatible pairs with nothing shared; the sample read found none clearly.
+
+The renamed people left out are the hardest real cases and are worth a reviewed list later. They are few (12), and the 2,034 people with former names (2,115 former names in all) remain for the `renamed` kind.
+
+**Other counts.** 3,566 people carry a generational suffix; 107,770 have a city; 24,033 report at two or more issuers.

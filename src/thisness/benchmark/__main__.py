@@ -42,6 +42,14 @@ def main() -> None:
     uk_audit = sub.add_parser("uk-audit", help="read a sample of the join")
     uk_audit.add_argument("--n", type=int, default=400)
     sub.add_parser("uk-fixture", help="rebuild the shipped UK fixture from the staged data")
+    edgar_stage = sub.add_parser(
+        "edgar-stage", help="stage EDGAR insiders from an edgar-persons-pool store (design 09)"
+    )
+    edgar_stage.add_argument("--store", type=Path, required=True,
+                             help="the edgar-persons-pool DuckDB file (read only)")  # fmt: skip
+    sub.add_parser("edgar-truth", help="count how good the CIK is as truth")
+    edgar_audit = sub.add_parser("edgar-audit", help="read samples of the truth's doubts")
+    edgar_audit.add_argument("--n", type=int, default=40)
     starter = sub.add_parser("starter", help="rebuild a starter model")
     starter.add_argument("--type", default="organization", choices=sorted(GENERATORS))
     starter.add_argument("--out", type=Path, default=None)
@@ -70,6 +78,15 @@ def main() -> None:
                 print(f"- {d['gleif']!r} | Companies House: {d['companies_house']!r}")
         else:
             print(f"wrote {uk.make_fixture()}")
+    elif args.command.startswith("edgar-"):
+        from thisness.benchmark import edgar
+
+        if args.command == "edgar-stage":
+            print(f"staged {edgar.stage(args.store)}")
+        elif args.command == "edgar-truth":
+            print(json.dumps(edgar.truth_report(), indent=1))
+        else:
+            print(json.dumps(edgar.audit(n=args.n), indent=1))
     elif args.command == "wfo-fixture":
         target = Path(taxa.__file__).parent / "data" / "wfo_fixture.csv.gz"
         taxa.write_rows(taxa.families(taxa.FIXTURE_FAMILIES), target)
