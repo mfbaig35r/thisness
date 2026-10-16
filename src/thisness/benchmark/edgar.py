@@ -15,14 +15,14 @@ from __future__ import annotations
 import random as _random
 import re
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 CACHE = Path.home() / ".cache" / "thisness" / "edgar"
 MIN_CONFIDENCE = 0.85  # edgar-persons-pool's individual confidence
-SUFFIXES = frozenset({"JR", "SR", "II", "III", "IV", "V"})
+SUFFIXES = frozenset({"JR", "SR", "II", "III", "IV"})  # a lone "V" is an initial
 
 _STAGE = """
 CREATE OR REPLACE TABLE people AS
@@ -179,6 +179,11 @@ def _groups(people: dict[str, str]) -> dict[str, list[str]]:
 _NOT_A_PERSON = re.compile(
     r"\d|\b(APS|AS|SAS|SCS|MHC|GRAT|SPONSOR|FCPR|UA|INVESTORS|L P)\b", re.IGNORECASE
 )
+# A former name can be a trust or company the CIK once filed as.
+_NOT_A_NAME = re.compile(
+    r"\b(TRUST|TRUSTEE|LLC|INC|CORP|LP|LTD|FUND|PARTNERS|CAPITAL|HOLDINGS|BANCSHARES)\b",
+    re.IGNORECASE,
+)
 
 
 def _pairs(d: dict[str, Any]) -> dict[str, list[tuple[str, str]]]:
@@ -309,3 +314,207 @@ def audit(db: Path = CACHE / "edgar.duckdb", *, n: int = 40, seed: int = 1) -> d
         out[f"pairs_{kind}"] = [{"a": describe(a), "b": describe(b)}
                                 for a, b in sample(pairs[kind])]  # fmt: skip
     return out
+
+
+# -- the benchmark (design 09 §4) -------------------------------------------------------
+
+GENERATOR_VERSION = "1"
+MODES = ("hidden", "partial")
+US_STATES = frozenset(
+    [
+        "AL",
+        "AK",
+        "AZ",
+        "AR",
+        "CA",
+        "CO",
+        "CT",
+        "DE",
+        "DC",
+        "FL",
+        "GA",
+        "HI",
+        "ID",
+        "IL",
+        "IN",
+        "IA",
+        "KS",
+        "KY",
+        "LA",
+        "ME",
+        "MD",
+        "MA",
+        "MI",
+        "MN",
+        "MS",
+        "MO",
+        "MT",
+        "NE",
+        "NV",
+        "NH",
+        "NJ",
+        "NM",
+        "NY",
+        "NC",
+        "ND",
+        "OH",
+        "OK",
+        "OR",
+        "PA",
+        "RI",
+        "SC",
+        "SD",
+        "TN",
+        "TX",
+        "UT",
+        "VT",
+        "VA",
+        "WA",
+        "WV",
+        "WI",
+        "WY",
+        "PR",
+    ]
+)
+
+
+@dataclass(frozen=True)
+class Record:
+    record_id: str
+    person_id: str
+    attributes: dict
+    source: str
+
+
+@dataclass
+class Benchmark:
+    seed: int
+    records: list[Record]
+    people: dict[str, dict]  # person id -> kind, ciks, name
+    mode: str = "hidden"
+    entity_type: str = "person"
+    kind: dict[str, str] = field(init=False)
+    truth: dict[str, str] = field(init=False)  # record id -> person id
+    group: dict[str, str | None] = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.kind = {p: info["kind"] for p, info in self.people.items()}
+        self.group = {p: None for p in self.people}
+        self.truth = {r.record_id: r.person_id for r in self.records}
+
+    @property
+    def config(self) -> dict:
+        from collections import Counter
+
+        return {"generator": "edgar", "version": GENERATOR_VERSION, "seed": self.seed,
+                "mode": self.mode, "people": len(self.people), "records": len(self.records),
+                "kinds": dict(Counter(self.kind.values())),
+                "sources": dict(Counter(r.source for r in self.records))}  # fmt: skip
+
+
+def given_first(name: str) -> str:
+    """An EDGAR name as most other systems write it: "SMITH JOHN A JR" -> "John A Smith
+    Jr". Compound family names come out wrong ("Pineyro Sublett Carla" -> "Sublett Carla
+    Pineyro"), as they do when a person retypes them; the profile has to cope."""
+    words = _strip_marker(name).split()
+    suffixes = [w for w in words[1:] if w.upper().strip(".") in SUFFIXES]
+    rest = [w for w in words if w not in suffixes]
+    if len(rest) < 2:
+        return " ".join(words)
+    ordered = [w.capitalize() if w.isupper() and len(w) > 2 else w for w in rest[1:] + rest[:1]]
+    return " ".join(ordered + suffixes)
+
+
+def _kind(cik: str, d: dict[str, Any], keys: set[str]) -> str:
+    if name_key(d["people"][cik]) in keys:
+        return "namesake"
+    if d["former"].get(cik):
+        return "renamed"
+    if _parts(d["people"][cik])[1]:
+        return "suffix"
+    return "multi_issuer" if len(d["issuers"][cik]) > 1 else "plain"
+
+
+def generate(db: Path = CACHE / "edgar.duckdb", n: int = 1000, seed: int = 20261016, *,
+             mode: str = "hidden") -> Benchmark:  # fmt: skip
+    """About ``n`` people (design 09 §4): half from shared-name groups with every
+    namesake, an eighth renamed, an eighth with a generational suffix, the rest at
+    random. Each person has their EDGAR records (every spelling and former name, family
+    first) and one record from another system, given first."""
+    if mode not in MODES:
+        raise ValueError(f"mode must be one of {MODES}")
+    d = _load(db)
+    t = truth(data=d)
+    rng = _random.Random(seed)
+    members: dict[str, list[str]] = defaultdict(list)
+    for cik, person in sorted(t.person_of.items()):
+        members[person].append(cik)
+    groups = defaultdict(set)
+    for person in members:
+        if key := name_key(d["people"][person]):
+            groups[key].add(person)
+    shared = {k: sorted(v) for k, v in groups.items() if len(v) > 1}
+    chosen: list[str] = []
+    seen: set[str] = set()
+
+    def take(people: list[str], limit: int) -> None:
+        for p in people:
+            if len(chosen) >= limit:
+                return
+            if p not in seen:
+                seen.add(p)
+                chosen.append(p)
+
+    for key in rng.sample(sorted(shared), len(shared)):
+        if len(chosen) >= n // 2:
+            break
+        take(shared[key], n)
+    pool = sorted(members)
+    rng.shuffle(pool)
+    take([p for p in pool if any(d["former"].get(c) for c in members[p])], len(chosen) + n // 8)
+    take([p for p in pool if _parts(d["people"][p])[1]], len(chosen) + n // 8)
+    take(pool, n)
+
+    keys = set(shared)
+    records: list[Record] = []
+    people: dict[str, dict] = {}
+    for person in chosen:
+        ciks = members[person]
+        people[person] = {"kind": _kind(person, d, keys), "ciks": ciks,
+                          "name": d["people"][person]}  # fmt: skip
+        for cik in ciks:
+            roles = sorted(d["roles"][cik], key=lambda r: r[5] or "")  # by last date
+            cities = sorted(d["places"][cik], key=str)
+            spellings: dict[str, str] = {}
+            for name in sorted(d["names"].get(cik, ()), key=lambda s: (s.isupper(), s)):
+                spellings.setdefault(spelling(name), name)
+            for name in d["former"].get(cik, []):
+                if not _NOT_A_NAME.search(name) and not _NOT_A_PERSON.search(name):
+                    spellings.setdefault(spelling(name), name)
+            for i, name in enumerate(spellings.values()):
+                attrs: dict[str, Any] = {"name": _strip_marker(name).strip(),
+                                         "name_order": "family_first"}  # fmt: skip
+                if roles:
+                    attrs["employer"] = roles[-1][1]
+                if cities:
+                    city, state = rng.choice(cities)
+                    attrs["city"] = city.strip(" ,").title()
+                    if state in US_STATES:
+                        attrs["country"] = "US"
+                if mode == "partial":
+                    attrs["identifiers"] = [f"CIK:{cik}"]
+                records.append(Record(f"edgar-{cik}-{i}", person, attrs, "edgar"))
+        cik = rng.choice(ciks)
+        roles = d["roles"][cik]
+        attrs = {"name": given_first(d["people"][cik])}
+        if roles and rng.random() < 0.8:
+            attrs["employer"] = rng.choice(roles)[1]
+        if d["places"][cik] and rng.random() < 0.6:
+            attrs["city"] = rng.choice(sorted(d["places"][cik], key=str))[0].strip(" ,").title()
+        records.append(Record(f"other-{person}", person, attrs, "other"))
+    rng.shuffle(records)
+    return Benchmark(seed, records, people, mode)
+
+
+def standard(n: int = 1000, seed: int = 20261016, *, mode: str = "hidden") -> Benchmark:
+    return generate(CACHE / "edgar.duckdb", n, seed, mode=mode)

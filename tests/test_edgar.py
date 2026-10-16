@@ -160,3 +160,55 @@ def test_audit_samples_each_doubt(db):
     assert [d["cik"] for d in audit["unrelated_names"]] == ["09"]
     assert sorted(audit["not_a_person"]) == ["RF 2018 GRAT", "Seven2 SAS"]
     assert {(p["a"]["cik"], p["b"]["cik"]) for p in audit["pairs_issuer"]} == {("01", "02")}
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("SMITH JOHN A JR", "John A Smith JR"),
+        ("DAY II ROWLAND W", "Rowland W Day II"),
+        ("Maridakis Helen V", "Helen V Maridakis"),  # a lone V is an initial
+        ("MCDONALD JOHN D/MO", "John D Mcdonald"),
+    ],
+)
+def test_other_systems_write_names_given_first(name, expected):
+    assert edgar.given_first(name) == expected
+
+
+def test_the_benchmark_follows_the_truth(db):
+    bench = edgar.generate(db, n=20, seed=3)
+    kept = set(edgar.truth(db).person_of.values())
+    assert set(bench.people) == kept
+    assert bench.people["01"]["ciks"] == ["01", "02"]  # one person, two CIKs
+    by_person: dict[str, list] = {}
+    for r in bench.records:
+        by_person.setdefault(r.person_id, []).append(r)
+    for records in by_person.values():
+        sources = sorted(r.source for r in records)
+        assert sources.count("other") == 1 and "edgar" in sources
+        for r in records:
+            assert (r.attributes.get("name_order") == "family_first") == (r.source == "edgar")
+            assert "identifiers" not in r.attributes
+    # Every EDGAR spelling and former name is a record; a renamed person's former name too.
+    names = {edgar.spelling(r.attributes["name"]) for r in by_person["10"]}
+    assert {"CROSSMAEGANADAMS", "RUHLMANMAEGANADAMS"} <= names
+    assert bench.kind["10"] == "renamed" and bench.kind["04"] == "namesake"
+    assert {r.record_id for r in bench.records} == set(bench.truth)
+
+
+def test_partial_identifiers_are_ciks_on_edgar_records(db):
+    bench = edgar.generate(db, n=20, seed=3, mode="partial")
+    for r in bench.records:
+        if r.source == "edgar":
+            assert r.attributes["identifiers"][0].startswith("CIK:")
+        else:
+            assert "identifiers" not in r.attributes
+    with pytest.raises(ValueError):
+        edgar.generate(db, n=20, mode="visible")
+
+
+def test_the_eval_command_wants_people_for_edgar(capsys):
+    from thisness.cli import main
+
+    assert main(["eval", "--source", "edgar"]) == 1
+    assert "--type person" in capsys.readouterr().err

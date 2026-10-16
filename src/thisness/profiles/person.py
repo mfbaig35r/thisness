@@ -40,6 +40,8 @@ from thisness.profiles.base import (
 # date of birth is withheld from external models, contact details go out hashed.
 ATTRIBUTES = {
     "name": AttributeDefinition(name="name", data_type="string", sensitivity="internal"),
+    # How the source writes a name without a comma: given_first or family_first (design 09).
+    "name_order": AttributeDefinition(name="name_order", data_type="string"),
     "given_name": AttributeDefinition(name="given_name", data_type="string"),
     "family_name": AttributeDefinition(name="family_name", data_type="string"),
     "email": AttributeDefinition(name="email", data_type="string", cardinality="multi",
@@ -63,7 +65,7 @@ ATTRIBUTES = {
                                        external_model_policy="forbidden"),
 }  # fmt: skip
 
-NAME = frozenset({"name", "given_name", "family_name"})
+NAME = frozenset({"name", "given_name", "family_name", "name_order"})
 
 # Guidance added to every model prompt for people (design 06 §6).
 HINTS = """\
@@ -85,6 +87,8 @@ def person(version: str = "1") -> ResolutionProfile:
             ExactValue("email", "email", frozenset({"email"}), max_block=20),
             ExactValue("phone", "phone", frozenset({"phone"}), max_block=20),
             ExactValue("name_key", "pname.key", NAME, max_block=100),
+            # Every reading of a name: a compound family name's other reading (design 09).
+            ExactValue("name_reading", "pname.reading", NAME, max_block=100),
             ExactValue("family_initial", "pname.family_initial", NAME, max_block=100),
             ExactValue("phonetic", "pname.phonetic", NAME, max_block=100),
             # Same given name and birth date: finds married-name changes.

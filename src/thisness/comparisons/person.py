@@ -9,7 +9,7 @@ from rapidfuzz.distance import JaroWinkler
 from thisness.comparisons.base import FeatureView, Polarity, single, values
 from thisness.comparisons.organization import _SetComparison
 from thisness.core.components import ComponentRef
-from thisness.normalize.person import soundex
+from thisness.normalize.person import name_groups, soundex
 
 
 def _ref(name: str, version: str, config: dict) -> ComponentRef:
@@ -24,22 +24,31 @@ class PersonNameComparison:
     """Most specific level first. The middle initial and generational suffix separate
     'John A. Smith' from 'John B. Smith' and a father from a son; a family name that
     differs with the given name agreeing is its own level, since people change family
-    names on marriage."""
+    names on marriage. A family-first name's other reading (``pname.alt``, a compound
+    family name) that agrees with the other side counts as ``fuzzy``, like a given and
+    family name swapped (design 09 §3)."""
 
     name = "name"
     levels = ("exact", "given_family", "alias", "initial", "fuzzy", "middle_conflict",
               "given_only", "family_only", "else")  # fmt: skip
-    features = ("pname.given", "pname.family", "pname.groups", "pname.middle", "pname.suffix")
-    attributes = frozenset({"name", "given_name", "family_name"})
+    features = ("pname.given", "pname.family", "pname.groups", "pname.middle", "pname.suffix",
+                "pname.alt")  # fmt: skip
+    attributes = frozenset({"name", "given_name", "family_name", "name_order"})
     polarity: Mapping[str, Polarity] = {
         "exact": "supports", "given_family": "supports", "alias": "supports",
         "initial": "supports", "fuzzy": "supports", "middle_conflict": "contradicts",
         "given_only": "neutral", "family_only": "contradicts", "else": "contradicts",
     }  # fmt: skip
     jw = 0.88
-    ref = _ref("person_name", "1", {"levels": levels, "jw": jw})
+    ref = _ref("person_name", "2", {"levels": levels, "jw": jw, "alt_level": "fuzzy"})
 
     def compare(self, a: FeatureView, b: FeatureView) -> int | None:
+        level = self._primary(a, b)
+        if level is not None and level >= 6 and (_alt_agrees(a, b) or _alt_agrees(b, a)):
+            return 4
+        return level
+
+    def _primary(self, a: FeatureView, b: FeatureView) -> int | None:
         ga, gb = single(a, "pname.given"), single(b, "pname.given")
         fa, fb = single(a, "pname.family"), single(b, "pname.family")
         if not (ga and gb and fa and fb):
@@ -72,6 +81,21 @@ class PersonNameComparison:
         if given_match:
             return 6
         return 8
+
+
+def _alt_agrees(a: FeatureView, b: FeatureView) -> bool:
+    """``a``'s other reading has ``b``'s family name and the same given name, an alias of
+    it, or its initial."""
+    alt = single(a, "pname.alt")
+    gb, fb = single(b, "pname.given"), single(b, "pname.family")
+    if not (alt and gb and fb):
+        return False
+    given, family = alt.split(" ", 1)
+    if family != fb:
+        return False
+    if given == gb or (len(gb) == 1 and given[0] == gb):
+        return True
+    return bool(set(name_groups(given)) & values(b, "pname.groups"))
 
 
 class EmailComparison(_SetComparison):

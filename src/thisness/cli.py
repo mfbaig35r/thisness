@@ -492,6 +492,12 @@ def cmd_eval(args: argparse.Namespace) -> int:
     if args.source == "uk" and args.type != "organization":
         print("--source uk is a benchmark of organizations", file=sys.stderr)
         return 1
+    if args.source == "edgar" and args.type != "person":
+        print("--source edgar is a benchmark of people: add --type person", file=sys.stderr)
+        return 1
+    if args.source == "edgar" and args.identifiers == "visible":
+        print("--source edgar: --identifiers is hidden or partial", file=sys.stderr)
+        return 1
     options = {k: True for k in ("reference", "col") if getattr(args, k)}
     for n in args.size:
         for seed in args.seeds:
@@ -499,6 +505,10 @@ def cmd_eval(args: argparse.Namespace) -> int:
                 from thisness.benchmark import uk
 
                 bench = uk.standard(n, seed=seed, mode=args.identifiers)
+            elif args.source == "edgar":
+                from thisness.benchmark import edgar
+
+                bench = edgar.standard(n, seed=seed, mode=args.identifiers)
             else:
                 bench = _generator(args.type)(n, seed=seed, **options)
             if args.names_only:
@@ -643,15 +653,17 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument(
         "--source",
         default="synthetic",
-        choices=["synthetic", "uk"],
+        choices=["synthetic", "uk", "edgar"],
         help="uk: real UK companies from GLEIF and Companies House (design 07); "
-        "stage them first with python -m thisness.benchmark uk-stage",
+        "stage them first with python -m thisness.benchmark uk-stage. edgar: real SEC "
+        "insiders (design 09, --type person); stage them with edgar-stage",
     )
     s.add_argument(
         "--identifiers",
         default="hidden",
         choices=["hidden", "partial", "visible"],
-        help="with --source uk: whether records carry company numbers and LEIs",
+        help="with --source uk: whether records carry company numbers and LEIs; with "
+        "--source edgar: whether EDGAR records carry CIKs (hidden or partial)",
     )
     s.add_argument("--col", action="store_true", help="taxa only: the Catalogue of Life's rows")
     s.add_argument("--plan", default="default", choices=["default", "name-only", "rewrite"],

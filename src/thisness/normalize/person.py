@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from datetime import date
+from typing import Any
 
 from thisness.core.components import ComponentRef
 from thisness.core.observation import Observation
@@ -137,16 +138,26 @@ def soundex(word: str) -> str:
     return (out + "000")[:4]
 
 
-def parse_name(raw: str) -> dict[str, str] | None:
+NAME_ORDERS = ("given_first", "family_first")
+
+
+def parse_name(raw: str, order: str = "given_first") -> dict[str, Any] | None:
     """'Dr. Mohammad A. Khan Jr.', 'Khan, Mohammad A.' -> given, middle, family, suffix.
 
     A comma means 'Family, Given ...' unless what follows it is only a suffix or a
-    credential ('John Smith, Jr.', 'Jane Doe, PhD')."""
+    credential ('John Smith, Jr.', 'Jane Doe, PhD'). Without a comma the source's
+    ``order`` decides: 'given_first', or 'family_first' as registries write names
+    ('SMITH JOHN A JR', design 09 §3). A family-first name of three or more words may
+    have a compound family name ('Pineyro Sublett Carla'), which the words alone cannot
+    tell from a middle name; ``alt`` is then the other reading, given and family, with
+    the family name's last word as family, as a given-first record would parse it."""
     text = _fold(raw).replace("\u2019", "'")
     head, _, tail = text.partition(",")
     tail_tokens = re.findall(r"[a-z0-9']+", tail)
     if tail_tokens and not all(t in SUFFIXES or t in CREDENTIALS for t in tail_tokens):
         text = f"{tail} {head}"  # "Family, Given Middle" -> "Given Middle Family"
+    elif order == "family_first":
+        return _parse_family_first(text)
     tokens = [t.replace("'", "") for t in re.findall(r"[a-z0-9']+", text)]
     tokens = [t for t in tokens if t]
     while tokens and tokens[0] in HONORIFICS and len(tokens) > 2:
@@ -168,32 +179,70 @@ def parse_name(raw: str) -> dict[str, str] | None:
             "suffix": suffix}  # fmt: skip
 
 
+def _parse_family_first(text: str) -> dict[str, Any] | None:
+    tokens = [t.replace("'", "") for t in re.findall(r"[a-z0-9']+", text)]
+    tokens = [t for t in tokens if t and t not in HONORIFICS]
+    suffix = ""
+    kept = tokens[:1]
+    for t in tokens[1:]:  # suffixes stand anywhere: "DAY II ROWLAND W", "YOUNG RONALD JR"
+        if t in SUFFIXES or t in CREDENTIALS:
+            suffix = SUFFIXES.get(t, suffix)
+        else:
+            kept.append(t)
+    tokens = kept
+    family_end = 1
+    while family_end < len(tokens) - 1 and tokens[family_end - 1] in PARTICLES:
+        family_end += 1  # "VON EMSTER KURT", "DE LA HOYA OSCAR"
+    if len(tokens) > 2 and tokens[-1] in PARTICLES:  # "EMSTER KURT VON"
+        tokens = [tokens[-1], *tokens[:-1]]
+        family_end += 1
+    if len(tokens) - family_end < 1:
+        return None
+    family = "".join(tokens[:family_end])
+    given, rest = tokens[family_end], tokens[family_end + 1 :]
+    out: dict[str, Any] = {"given": given, "middle": "".join(t[0] for t in rest),
+                           "family": FAMILY_CANON.get(family, family), "suffix": suffix}  # fmt: skip
+    if family_end == 1 and rest and len(rest[0]) > 1 and len(given) > 1:
+        out["alt"] = (rest[0], FAMILY_CANON.get(given, given))
+    return out
+
+
 class PersonName:
     """Features: ``pname.given`` and ``pname.family`` (folded spellings),
     ``pname.groups`` (nickname and transliteration groups of the given name),
     ``pname.middle`` (initials), ``pname.suffix``, ``pname.key`` (canonical given and
     family, the exact-name key used for blocking and frequency), ``pname.tf_key``,
-    ``pname.family_initial`` and ``pname.phonetic`` (blocking keys)."""
+    ``pname.family_initial`` and ``pname.phonetic`` (blocking keys). A family-first name
+    that may have a compound family name adds ``pname.alt`` ("given family", the other
+    reading); ``pname.reading`` holds the key of every reading, for blocking.
+
+    The ``name_order`` attribute, set by the source, says how a name without a comma is
+    written: ``given_first`` (the default) or ``family_first`` (design 09 §3)."""
 
     features = frozenset({"pname.given", "pname.family", "pname.groups", "pname.middle",
                           "pname.suffix", "pname.key", "pname.tf_key", "pname.family_initial",
-                          "pname.phonetic", "pname.given_dob"})  # fmt: skip
+                          "pname.phonetic", "pname.given_dob", "pname.alt",
+                          "pname.reading"})  # fmt: skip
     ref = ComponentRef.of(
         "normalizer",
         "person_name",
-        "1",
+        "2",
         {"honorifics": sorted(HONORIFICS), "suffixes": SUFFIXES,
          "credentials": sorted(CREDENTIALS), "particles": sorted(PARTICLES),
-         "groups": [list(g) for g in NAME_GROUPS], "family_canon": FAMILY_CANON},
+         "groups": [list(g) for g in NAME_GROUPS], "family_canon": FAMILY_CANON,
+         "orders": list(NAME_ORDERS), "compound_alt": "last_word"},
     )  # fmt: skip
 
     def normalize(self, observation: Observation) -> list[Feature]:
         attrs = observation.attributes or {}
         raw = attrs.get("name")
-        if not isinstance(raw, str) or not raw.strip():
+        order = "given_first"
+        if isinstance(raw, str) and raw.strip():
+            order = attrs.get("name_order") if attrs.get("name_order") in NAME_ORDERS else order
+        else:
             parts = [attrs.get("given_name"), attrs.get("family_name")]
             raw = " ".join(p for p in parts if isinstance(p, str) and p.strip())
-        parsed = parse_name(raw) if raw else None
+        parsed = parse_name(raw, order) if raw else None
         if parsed is None:
             return []
         given, family = parsed["given"], parsed["family"]
@@ -208,6 +257,11 @@ class PersonName:
             Feature("pname.phonetic", 0, f"{soundex(given)} {soundex(family)}"),
         ]
         out += _features("pname.groups", name_groups(given) if len(given) > 1 else [])
+        readings = [key]
+        if alt := parsed.get("alt"):
+            out.append(Feature("pname.alt", 0, f"{alt[0]} {alt[1]}"))
+            readings.append(f"{canonical_given(alt[0])} {alt[1]}")
+        out += _features("pname.reading", readings)
         if parsed["middle"]:
             out.append(Feature("pname.middle", 0, parsed["middle"]))
         if parsed["suffix"]:

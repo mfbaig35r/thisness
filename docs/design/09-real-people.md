@@ -132,3 +132,43 @@ A rule on those words and on digits finds them. The digit rule also catches 4 pe
 The renamed people left out are the hardest real cases and are worth a reviewed list later. They are few (12), and the 2,034 people with former names (2,115 former names in all) remain for the `renamed` kind.
 
 **Other counts.** 3,566 people carry a generational suffix; 107,770 have a city; 24,033 report at two or more issuers.
+
+### 11.2 Step 2: name order, evaluations 1 and 2
+
+**Name order.** `name_order` is a person attribute; the name normalizer (version 2) reads a name without a comma family first when it is `family_first`:
+- the first word is the family name, with particles before it ("von Emster Kurt") or, as EDGAR sometimes writes them, after the name ("EMSTER KURT VON");
+- the next word is the given name; the rest are middle names, kept as initials;
+- suffixes may stand anywhere after the family name ("DAY II ROWLAND W").
+
+A comma still means "Family, Given" in either order, and a value other than the two is ignored.
+
+**The compound reading** (decision 3). A family-first name with a full third word gets a second reading: the third word as the given name and the second as the family name ("Pineyro Sublett Carla" read as Carla, Sublett). That is how a given-first record of the same person parses ("Carla Pineyro Sublett" has family name Sublett, middle initial P), and how EDGAR's own second CIK sometimes writes it ("LOSADA MORENO ANGEL" and "Moreno Angel Losada").
+- The reading is a blocking key (`pname.reading`, a new `name_reading` generator).
+- In the comparison (version 2) it is tried only when the main reading disagrees (`given_only`, `family_only`, `else`). When it agrees, the level is `fuzzy`, as for a given and family name swapped, never `exact`, so "Smith John Albert" read as Albert John is weak support at most.
+- Joining the two words ("pineyrosublett") was left out: no given-first record parses that way.
+
+**The benchmark used here** is the minimal one, with step 3's variants still to come. About n people are sampled as §4 says. Each has their EDGAR records (every spelling and former name, family first, the latest issuer as employer, a city) and one record from another system: the conformed name given first ("John A Smith JR"), an issuer 80% of the time, a city 60%. Former names that are trusts or companies ("MCCABE FAMILY TRUST ...") are not records. Default seed 20261016; 1,000 people give about 2,116 records.
+
+**Results** (1,000 people, seeds 20261016 and 1; "oracle" is the simulated adjudicator deciding every contested pair):
+
+| | B3 precision | B3 recall | Candidate pair recall | Reviews |
+|---|---|---|---|---|
+| Evaluation 1: no name order | .9986 / .9995 | .476 / .477 | .027 / .026 | 53 / 49 |
+| Evaluation 1, oracle | .9986 / .9995 | .481 / .481 | | 7 / 3 |
+| Evaluation 2: name order | .9975 / .9981 | .718 / .710 | .924 / .923 | 506 / 514 |
+| Evaluation 2, oracle | .9975 / .9981 | .939 / .942 | | 58 / 53 |
+
+- **Misparsing costs everything.** Without name order an EDGAR record and a given-first record of the same person almost never meet: "SMITH JOHN A" reads as given name Smith, family name A. Recall is the share of people with a single record.
+- **With it, candidates are found** (.92). Without the oracle, most of what remains is boundary reviews: one EDGAR record against one other record, exact name and same issuer, comes to about 12 bits, the threshold.
+  - The name weight is fitted on a sample that is half namesakes by design, so an exact name is worth about 10 bits.
+  - Employer is capped at 2 bits (design 04 §6.4: colleagues share an employer).
+  - Whether a model should decide these is evaluation 3.
+- **With the oracle**, recall by kind is about .99 for plain, suffix and multi-issuer people, .96 for namesakes and .78 for renamed people. A married name with nothing else shared (no date of birth in EDGAR) is not found, and should not be on a name alone.
+- **The compound reading** adds .7 points of candidate recall (.912 without it) and .2 of B3 recall, with no false merge.
+- **The false merges read (seed 20261016) all have a suffix on one side only.**
+  - Three are a father and son at one issuer, the father written without a suffix: "SHUFORD ROBERT F" and "SHUFORD ROBERT F JR" (Old Point Financial), "BERKLEY WILLIAM R" and "BERKLEY WILLIAM R JR" (W. R. Berkley), "SCHORSCH NICHOLAS S" and "Schorsch Nicholas S. Jr.".
+  - The fourth, "R Scott Greer" and "GREER ROBERT S. JR.", may be one person with two CIKs.
+  - The generational-suffix constraint needs a suffix on both sides.
+  - The truth calls these different people (§11.1, conflicting suffixes).
+  - This is design §10's hardest case, and it is real. A suffix on one side only, at the same issuer, could be its own name level or a review trigger; left for step 4, where the model's answer on these pairs is measured.
+- **Given-first names are unchanged:** the synthetic person benchmark gives identical results before and after (seeds 11 and 12).

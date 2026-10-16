@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+Real people (design 09).
+
+- **Name order.** A person record's `name_order` attribute (`given_first`, the default, or `family_first`) says how its source writes a name without a comma; registries such as SEC EDGAR write "SMITH JOHN A JR". A family-first name of three words or more also gets the reading with a compound family name ("Pineyro Sublett Carla" as Carla Pineyro Sublett), which proposes candidates and counts as a `fuzzy` name match. Person name normalizer and comparison version 2; the person starter model is rebuilt. Given-first names are unaffected.
+- **Benchmarks.** `python -m thisness.benchmark edgar-stage --store PATH` stages SEC Section 16 insiders from an edgar-persons-pool store; `edgar-truth` and `edgar-audit` measure the CIK as truth; `thisness eval --type person --source edgar` runs the benchmark.
+
 ## 0.2.0 (2026-10-15)
 
 Supplier lists (design 08).
