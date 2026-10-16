@@ -468,9 +468,10 @@ def cmd_eval(args: argparse.Namespace) -> int:
     if (args.reference or args.col) and args.type != "taxon":
         print("--reference and --col apply to taxa only", file=sys.stderr)
         return 1
-    if args.replay and args.adjudicator in ("none", "oracle"):
-        print("--replay answers from a recording of --adjudicator anthropic or openai",
-              file=sys.stderr)  # fmt: skip
+    real = ("anthropic", "openai")
+    if args.replay and args.adjudicator not in real and args.assistant not in real:
+        print("--replay answers from a recording of --adjudicator or --assistant anthropic "
+              "or openai", file=sys.stderr)  # fmt: skip
         return 1
     if args.replay and args.record:
         print("--replay and --record together would record the recording", file=sys.stderr)
@@ -518,8 +519,10 @@ def cmd_eval(args: argparse.Namespace) -> int:
             if args.plan == "rewrite":
                 _eval_rewrite(args, bench)
                 continue
-            report, engine, _ = run_benchmark(bench, adjudicator=factory, plan=plan,
-                                              store=args.save or ":memory:")  # fmt: skip
+            report, engine, truth = run_benchmark(bench, adjudicator=factory, plan=plan,
+                                                  store=args.save or ":memory:")  # fmt: skip
+            assisted = (_eval_assistant(args, engine, truth, bench)
+                        if args.assistant != "none" else None)  # fmt: skip
             if args.save:
                 engine.store.close()
                 print(f"saved to {args.save}; open it with: thisness ui {args.save}")
@@ -529,7 +532,37 @@ def cmd_eval(args: argparse.Namespace) -> int:
                 print("  name-only:", json.dumps({k: report.run[k] for k in keep}, sort_keys=True))
             if not args.json and "adjudication" in report.run:
                 print("  adjudication:", json.dumps(report.run["adjudication"], sort_keys=True))
+            if assisted is not None:
+                print("  assistant:", json.dumps(assisted, sort_keys=True))
     return 0
+
+
+def _eval_assistant(args: argparse.Namespace, engine, truth, bench) -> dict:
+    """The review assistant answers every review the run left open, and its suggestions
+    are scored against the truth as if accepted (design 06 §10.10, design 09 §6)."""
+    from thisness.assistant import ReviewAssistant
+    from thisness.benchmark.evaluate import recommendation_accuracy
+    from thisness.benchmark.oracle import benchmark_truth, oracle_provider
+    from thisness.llm import LLMClient, LLMPolicy
+    from thisness.llm.providers import RecordingProvider
+
+    if args.assistant == "oracle":
+
+        def related(a, b):
+            return bench.group.get(a) is not None and bench.group.get(a) == bench.group.get(b)
+
+        provider = oracle_provider(benchmark_truth(engine, truth), related)
+        if args.record:
+            provider = RecordingProvider(provider, args.record)
+    else:
+        args.provider = args.assistant
+        provider = _provider(args)
+    client = LLMClient(engine.store, provider, ids=engine.ids, clock=engine.clock,
+                       policy=LLMPolicy(budget_usd=args.budget, concurrency=args.concurrency))  # fmt: skip
+    assistant = ReviewAssistant(client, model=args.model)
+    results = engine.recommend_open(limit=1_000_000, assistant=assistant)
+    return {**recommendation_accuracy(engine, truth, results), "calls": client.calls,
+            "spent_usd": round(client.spent_usd, 4)}  # fmt: skip
 
 
 def parser() -> argparse.ArgumentParser:
@@ -646,6 +679,9 @@ def parser() -> argparse.ArgumentParser:
     )
     g.add_argument("--oracle-error", type=float, default=0.0)
     g.add_argument("--oracle-fold", type=float, default=0.0)
+    s.add_argument("--assistant", default="none", choices=["none", "oracle", "anthropic", "openai"],
+                   help="after the run, the review assistant answers every open review and "
+                        "its suggestions are scored against the truth")  # fmt: skip
     s.add_argument("--names-only", action="store_true", help="the supplier-names benchmark")
     s.add_argument("--messy", action="store_true",
                    help="with --names-only: names as real extracts write them (design 08 §8)")  # fmt: skip

@@ -214,3 +214,39 @@ Candidate recall rose from .923 to .961 (and .929 to .963 on seed 1). The synthe
 - 30 renamed people and 20 plain ones.
 
 `edgar.from_fixture()` builds the benchmark from it: 417 records; precision 1.0 and candidate recall .95 with no adjudicator.
+
+### 11.4 Step 4: models on real people (evaluation 3)
+
+`thisness eval --assistant {oracle,anthropic,openai}` (new): after the run, the review assistant answers every review the run left open, and `benchmark.evaluate.recommendation_accuracy` scores each suggestion as if accepted. A suggestion is right when its grouping is the truth's; a wrong one would merge different people, leave a match apart, or both. With the oracle as assistant every suggestion is right (620 of 620), a check on the scorer.
+
+All runs: 1,000 people, seed 11 (`thisness eval --type person --source edgar --size 1000 --seeds 11`), 2,893 records, gpt-6-luna, concurrency 16. Cassettes and saved stores are in `~/thisness-demo` (`edgar1000-decide-gpt-6-luna.jsonl`, `edgar1000-recommend-gpt-6-luna.jsonl`); `--replay` answers them again, free.
+
+| | B3 precision | B3 recall | False-merge clusters | Reviews | Cost |
+|---|---|---|---|---|---|
+| No model | .9990 | .526 | 2 | 620 | |
+| gpt-6-luna deciding (yielding) | .9874 | .837 | 18 | 283 | $0.55 |
+| Oracle deciding | .9990 | .896 | 2 | 171 | |
+
+**Luna deciding merges namesakes.** Of 4,158 contested pairs it answered 2,063 "same", 232 "different" and 1,844 "unsure".
+- Of the 2,068 pairs the truth calls different people, it said "same" for 420 and "unsure" for 1,421. That is 65% of its decided answers on different people, against 25% on synthetic people (design 06 §10.8).
+- All but two of the 420 are namesake pairs where nothing contradicts. Either one record has only a name ("Neil Martin" and "Martin, Neil S" at the Korea Fund), or the two have different employers and cities ("Matt Roberts", Vacasa, Portland, and "Roberts Matthew K", LSC Communications, Chicago).
+- The people guidance tells the model that variants of one name are the same person "when nothing contradicts it". On synthetic people that held; among real insiders, where one name in sixteen is shared, it does not.
+- Its "different" is reliable: of the 2,072 pairs that are one person, it called 6 different (and 423 unsure).
+
+**Luna as the review assistant** ($0.25, 620 calls, every answer valid):
+- 450 of the 526 decided suggestions would be right if accepted (86%), and 94 were unsure.
+- By answer: "same" 363 of 377 (96%), a regrouping 83 of 142 (58%), "different" 4 of 7.
+- Accepting every suggestion would merge different people in 26 reviews (4.2%) and leave a match apart in 59.
+
+This is design 06 §10.10's result on synthetic people almost exactly (86%; "same" 97.5%). A model shown every record of a review is far more careful than one shown a pair.
+
+The 26 merges are the hardest real cases:
+- a father and son at one company ("Patrick G. Ryan" and "Patrick G. Ryan Jr", Ryan Specialty);
+- the same name at two companies in one city;
+- a few that may be the truth's error. "Paul S. Michaels" at Keurig Dr Pepper and at an Invesco fund is probably one person with two CIKs. The truth calls compatible names with nothing shared different people (§11.1), and that rule is wrong for an unknown few.
+
+**Decision 3 of design 06 §10.11 stands: people keep `model_role="suggest"`.**
+- On real people, deciding costs nine times the false merges (2 to 18) for 31 points of recall.
+- The assistant's suggestions are as reliable as on synthetic people, and a person accepts or rejects each one.
+
+The guidance hint above is the lever if people are ever to be decided by a model. Design 06 §10.9 tried a stricter one, which made luna unsure of nearly everything; on real data a narrower rule (a common name with no shared employer, place or identifier is not evidence) is worth one run. Not done here.

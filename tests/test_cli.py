@@ -170,3 +170,18 @@ def test_resolve_gives_the_model_each_profiles_role(tmp_path, capsys, monkeypatc
 
 def test_the_uk_source_is_for_organizations():
     assert main(["eval", "--source", "uk", "--type", "person", "--size", "10"]) == 1
+
+
+def test_eval_scores_the_review_assistant_against_the_truth(capsys, monkeypatch):
+    import json as _json
+
+    import thisness.benchmark.edgar as edgar
+
+    monkeypatch.setattr(edgar, "standard", lambda n, seed, mode: edgar.from_fixture(n, seed,
+                                                                                mode=mode))  # fmt: skip
+    assert main(["eval", "--type", "person", "--source", "edgar", "--size", "150",
+                 "--assistant", "oracle", "--concurrency", "1"]) == 0  # fmt: skip
+    line = next(x for x in capsys.readouterr().out.splitlines() if "assistant:" in x)
+    scored = _json.loads(line.split("assistant:", 1)[1])
+    assert scored["reviews"] > 0 and scored["accuracy"] == 1.0
+    assert scored["would_merge_different"] == scored["would_leave_apart"] == 0

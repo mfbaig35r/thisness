@@ -255,3 +255,27 @@ def test_the_fixture_benchmark_resolves():
     report, _, _ = run_benchmark(bench)
     assert report.clusters.b3_precision >= 0.98
     assert report.candidates["pair_recall"] >= 0.9
+
+
+def test_suggestions_are_scored_as_if_accepted():
+    from types import SimpleNamespace as NS
+
+    from thisness.benchmark.evaluate import recommendation_accuracy
+
+    truth = {"a1": "A", "a2": "A", "b1": "B", "c1": "C"}
+
+    def rec(resolution, groups):
+        return NS(status="ok", recommendation=NS(resolution=resolution, groups=groups))
+
+    scored = recommendation_accuracy(None, truth, [
+        rec("same", (("a1", "a2"),)),  # right
+        rec("same", (("a1", "b1"),)),  # merges different people
+        rec("different", (("a1",), ("a2",))),  # leaves a match apart
+        rec("groups", (("a1", "a2"), ("b1", "c1"))),  # both right and wrong: wrong
+        rec("unsure", None),
+        NS(status="failed", recommendation=None),
+    ])  # fmt: skip
+    assert scored["decided"] == 4 and scored["right"] == 1 and scored["unsure"] == 1
+    assert scored["would_merge_different"] == 2 and scored["would_leave_apart"] == 1
+    assert scored["statuses"] == {"ok": 5, "failed": 1}
+    assert scored["by_resolution"]["same"] == {"right": 1, "of": 2}

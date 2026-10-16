@@ -288,3 +288,46 @@ def _candidates_of(
     profile = engine.profiles[result.stats.get("entity_type") or next(iter(engine.profiles))]
     pairs = distinct_pairs(generate_all(engine.store, profile.candidate_generators, result.run_id))
     return candidate_metrics(pairs, truth, kind)
+
+
+def recommendation_accuracy(engine: Thisness, truth: Mapping[str, str],
+                            recommended: Iterable[Any]) -> dict[str, Any]:  # fmt: skip
+    """How the review assistant's suggestions (design 05 §5) would fare if accepted:
+    right when a suggestion's grouping is the truth's; wrong ones split into those that
+    would merge different entities and those that would leave a match apart (a grouping
+    can do both). A group's member that is an entity counts as its members' majority."""
+    from thisness.benchmark.oracle import benchmark_truth
+
+    truth_of = benchmark_truth(engine, truth)
+    statuses: Counter[str] = Counter()
+    by_resolution: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+    unsure = merges_different = leaves_apart = 0
+    for r in recommended:
+        statuses[r.status] += 1
+        rec = r.recommendation
+        if rec is None:
+            continue
+        if rec.groups is None:
+            unsure += 1
+            continue
+        groups = [[truth_of(n) for n in g] for g in rec.groups]
+        mixed = any(len(set(g)) > 1 for g in groups)
+        seen: Counter[str | None] = Counter(t for g in groups for t in set(g))
+        apart = any(c > 1 for t, c in seen.items() if t is not None)
+        merges_different += mixed
+        leaves_apart += apart
+        by_resolution[rec.resolution][0] += not (mixed or apart)
+        by_resolution[rec.resolution][1] += 1
+    right = sum(v[0] for v in by_resolution.values())
+    decided = sum(v[1] for v in by_resolution.values())
+    return {
+        "reviews": sum(statuses.values()),
+        "statuses": dict(statuses),
+        "unsure": unsure,
+        "decided": decided,
+        "right": right,
+        "accuracy": right / decided if decided else float("nan"),
+        "by_resolution": {k: {"right": v[0], "of": v[1]} for k, v in sorted(by_resolution.items())},
+        "would_merge_different": merges_different,
+        "would_leave_apart": leaves_apart,
+    }
