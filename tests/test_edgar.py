@@ -184,8 +184,8 @@ def test_the_benchmark_follows_the_truth(db):
     for r in bench.records:
         by_person.setdefault(r.person_id, []).append(r)
     for records in by_person.values():
-        sources = sorted(r.source for r in records)
-        assert sources.count("other") == 1 and "edgar" in sources
+        sources = [r.source for r in records]
+        assert 1 <= len(sources) - sources.count("edgar") <= 3 and "edgar" in sources
         for r in records:
             assert (r.attributes.get("name_order") == "family_first") == (r.source == "edgar")
             assert "identifiers" not in r.attributes
@@ -212,3 +212,46 @@ def test_the_eval_command_wants_people_for_edgar(capsys):
 
     assert main(["eval", "--source", "edgar"]) == 1
     assert "--type person" in capsys.readouterr().err
+
+
+def test_other_systems_vary_the_name_but_keep_it_given_first():
+    import random
+
+    rng = random.Random(5)
+    names = [edgar._other_name("SHUFORD ROBERT F JR", rng) for _ in range(200)]
+    assert all("," in n or n.upper().split()[-1] in ("SHUFORD", "JR") or "Shuford" not in n
+               for n in names)  # fmt: skip
+    assert any(n.startswith(("Bob", "Rob", "BOB", "ROB")) for n in names)  # nicknames
+    assert any(n.endswith("Shuford") for n in names)  # the suffix dropped
+    assert any(" F. " in n for n in names) and any(n == n.upper() for n in names)
+    rng = random.Random(1)
+    written = {edgar._employer_as_written("COMERICA INC /NEW/", rng) for _ in range(50)}
+    assert "COMERICA INC /NEW/" not in written and {"COMERICA", "Comerica"} & written
+
+
+@pytest.fixture(scope="module")
+def shipped(tmp_path_factory):
+    return edgar.fixture_db(tmp_path_factory.mktemp("edgar_fixture") / "fixture.duckdb")
+
+
+def test_the_shipped_fixture_holds_the_hard_cases(shipped):
+    report = edgar.truth_report(shipped)
+    assert report["ciks"] >= 120 and not report["excluded"]
+    assert report["shared_name_pairs"]["issuer"] >= 10  # one person, two CIKs
+    assert report["shared_name_pairs"]["conflicting"] >= 20  # fathers and sons, namesakes
+    assert report["with_former_names"] >= 20
+    con = duckdb.connect(str(shipped), read_only=True)
+    columns = {r[0] for t in ("people", "names", "roles", "places", "former_names")
+               for r in con.execute(f"DESCRIBE {t}").fetchall()}  # fmt: skip
+    assert not columns & {"street1", "street2", "zip_code", "addresses"}
+
+
+def test_the_fixture_benchmark_resolves():
+    from thisness.benchmark.evaluate import run_benchmark
+
+    bench = edgar.from_fixture()
+    assert {"edgar", "crm", "board", "screening"} == {r.source for r in bench.records}
+    assert {"namesake", "renamed"} <= set(bench.kind.values())
+    report, _, _ = run_benchmark(bench)
+    assert report.clusters.b3_precision >= 0.98
+    assert report.candidates["pair_recall"] >= 0.9

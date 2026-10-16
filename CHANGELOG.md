@@ -4,8 +4,9 @@
 
 Real people (design 09).
 
-- **Name order.** A person record's `name_order` attribute (`given_first`, the default, or `family_first`) says how its source writes a name without a comma; registries such as SEC EDGAR write "SMITH JOHN A JR". A family-first name of three words or more also gets the reading with a compound family name ("Pineyro Sublett Carla" as Carla Pineyro Sublett), which proposes candidates and counts as a `fuzzy` name match. Person name normalizer and comparison version 2; the person starter model is rebuilt. Given-first names are unaffected.
-- **Benchmarks.** `python -m thisness.benchmark edgar-stage --store PATH` stages SEC Section 16 insiders from an edgar-persons-pool store; `edgar-truth` and `edgar-audit` measure the CIK as truth; `thisness eval --type person --source edgar` runs the benchmark.
+- **Name order.** A person record's `name_order` attribute (`given_first`, the default, or `family_first`) says how its source writes a name without a comma; registries such as SEC EDGAR write "SMITH JOHN A JR". A family-first name of three words or more also gets the reading with a compound family name ("Pineyro Sublett Carla" as Carla Pineyro Sublett), which proposes candidates and counts as a `fuzzy` name match. A family-first name is also a blocking key with its order swapped, since registries are not always consistent. Person name normalizer and comparison version 2; the person starter model is rebuilt. Given-first names are unaffected.
+- **Given name and employer** is a new person blocking key (`given_employer`): where there is no date of birth, it finds family names that changed or were mistyped. Colleagues share employers, so EM does not learn from its pairs.
+- **Benchmarks.** `python -m thisness.benchmark edgar-stage --store PATH` stages SEC Section 16 insiders from an edgar-persons-pool store; `edgar-truth` and `edgar-audit` measure the CIK as truth; `thisness eval --type person --source edgar` runs the benchmark: real people and namesakes, each with their EDGAR records and up to three records from other systems written as those write people (nicknames, initials, dropped suffixes, typos, former names, employers without their legal form). A fixture of about 150 insiders ships for tests.
 
 ## 0.2.0 (2026-10-15)
 

@@ -172,3 +172,45 @@ A comma still means "Family, Given" in either order, and a value other than the 
   - The truth calls these different people (§11.1, conflicting suffixes).
   - This is design §10's hardest case, and it is real. A suffix on one side only, at the same issuer, could be its own name level or a review trigger; left for step 4, where the model's answer on these pairs is measured.
 - **Given-first names are unchanged:** the synthetic person benchmark gives identical results before and after (seeds 11 and 12).
+
+### 11.3 Step 3: the generator and the fixture
+
+**Records from other systems** (generator version 2). Each person has one to three, from a CRM, a board list and a screening list, each from one of the person's CIKs.
+- **The name** is the current conformed name, or a former name 35% of the time when there is one, as others write it:
+  - given first, or "Family, Given" 15% of the time;
+  - a nickname or transliteration from the person profile's name groups 30% of the time ("Bob F. Shuford", "Jack D. Mcdonald");
+  - middle names dropped (35%) or initialled (35%);
+  - the suffix dropped 30% of the time ("Robert F Shuford" for Robert F Shuford Jr, the hardest real case);
+  - a typo 6% of the time, capitals 15%.
+- **The employer** is one of the person's issuers (a directorship's for the board list), on 80% of CRM records, every board-list record and 30% of screening records. It is written without EDGAR's state marker ("/DE/", "/NEW/"), half the time without its legal form, often in title case ("Comerica" for COMERICA INC /NEW/).
+- **The place** is a filing city half the time, the country alone a fifth of the time, otherwise none.
+- **A compound family name is retyped as if its second word were the given name** ("Pineyro, Sublett"), as design §4 accepted. The generator cannot tell which names are compound.
+
+**What it found in the profile.** About 7.7% of true pairs (228 of 2,949, seed 20261016) were never candidates.
+- 169 differ in family name: typos in either source, married names ("Julie Huber" and "Smith Julie A"), EDGAR's own "ET AL".
+- 13 are swapped: one CIK holds "Hui Liu" and "Liu Hui".
+- 131 of the 228 shared the employer exactly.
+
+The person profile's key for a changed family name is the given name with a date of birth, which EDGAR does not have. Two keys were added:
+- **`given_employer`**: canonical given name and employer key, max block 30, excluded from EM as phone and address are, since colleagues share employers.
+- **The swapped order** of a family-first name as a reading.
+
+Candidate recall rose from .923 to .961 (and .929 to .963 on seed 1). The synthetic person benchmark is unchanged (B3 identical; pair recall .929 to .930), and so is the starter model.
+
+**Results** (1,000 people, about 2,860 records, seeds 20261016 and 1):
+
+| | B3 precision | B3 recall | Candidate pair recall | Reviews |
+|---|---|---|---|---|
+| No adjudicator | .9984 / .9984 | .543 / .549 | .961 / .963 | 616 / 624 |
+| Oracle deciding | .9993 / .9995 | .906 / .912 | | 150 / 136 |
+
+- Recall without an adjudicator falls from .72 (step 2) to .54. Records from other systems carry less (no city on half, no employer on most screening records), so most true pairs land in review. That is the room evaluation 3 measures a model in.
+- With the oracle, recall is about .97 for plain people and .89 to .90 for namesakes. The rest is what a name cannot carry: married names with nothing else shared, compound family names retyped wrong, typos with no employer.
+
+**The fixture** (`benchmark/data/edgar`, 40 KB, `python -m thisness.benchmark edgar-fixture`) is 149 CIKs (134 people), with the §7 fields only:
+- 15 whole shared-name groups holding one person with two CIKs;
+- 15 holding a father and son at one issuer, or conflicting suffixes;
+- 15 other whole groups;
+- 30 renamed people and 20 plain ones.
+
+`edgar.from_fixture()` builds the benchmark from it: 417 records; precision 1.0 and candidate recall .95 with no adjudicator.

@@ -50,6 +50,7 @@ def main() -> None:
     sub.add_parser("edgar-truth", help="count how good the CIK is as truth")
     edgar_audit = sub.add_parser("edgar-audit", help="read samples of the truth's doubts")
     edgar_audit.add_argument("--n", type=int, default=40)
+    sub.add_parser("edgar-fixture", help="rebuild the shipped EDGAR fixture from the staged data")
     starter = sub.add_parser("starter", help="rebuild a starter model")
     starter.add_argument("--type", default="organization", choices=sorted(GENERATORS))
     starter.add_argument("--out", type=Path, default=None)
@@ -85,6 +86,8 @@ def main() -> None:
             print(f"staged {edgar.stage(args.store)}")
         elif args.command == "edgar-truth":
             print(json.dumps(edgar.truth_report(), indent=1))
+        elif args.command == "edgar-fixture":
+            print(f"wrote {edgar.make_fixture()}")
         else:
             print(json.dumps(edgar.audit(n=args.n), indent=1))
     elif args.command == "wfo-fixture":

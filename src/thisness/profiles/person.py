@@ -93,6 +93,10 @@ def person(version: str = "1") -> ResolutionProfile:
             ExactValue("phonetic", "pname.phonetic", NAME, max_block=100),
             # Same given name and birth date: finds married-name changes.
             ExactValue("given_dob", "pname.given_dob", NAME | {"date_of_birth"}, max_block=30),
+            # Same given name and employer: the same, where there is no date of birth
+            # (design 09). Colleagues share employers, so EM does not learn from it.
+            ExactValue("given_employer", "pname.given_employer", NAME | {"employer"},
+                       max_block=30),
             ExactValue("address", "address", frozenset({"address_line"}), max_block=30),
         ),
         comparisons=(PersonNameComparison(), EmailComparison(), PhoneComparison(),
@@ -124,7 +128,7 @@ def person(version: str = "1") -> ResolutionProfile:
         relations=("spouse_of", "parent_of", "sibling_of", "household_member_of",
                    "colleague_of", "related_to"),
         min_strong_weight=12.0,
-        em_excluded_generators=frozenset({"phone", "address"}),
+        em_excluded_generators=frozenset({"phone", "address", "given_employer"}),
         starter_model="person_starter.json",
         prompt_hints=HINTS,
         # Its "same" on hard pairs of people is right three times in four: it suggests,

@@ -214,7 +214,10 @@ class PersonName:
     family, the exact-name key used for blocking and frequency), ``pname.tf_key``,
     ``pname.family_initial`` and ``pname.phonetic`` (blocking keys). A family-first name
     that may have a compound family name adds ``pname.alt`` ("given family", the other
-    reading); ``pname.reading`` holds the key of every reading, for blocking.
+    reading); ``pname.reading`` holds the key of every reading, for blocking, and of a
+    family-first name's order swapped too, since registries are not always consistent.
+    ``pname.given_employer`` (canonical given name and employer) finds family names that
+    changed or were mistyped where there is no date of birth.
 
     The ``name_order`` attribute, set by the source, says how a name without a comma is
     written: ``given_first`` (the default) or ``family_first`` (design 09 §3)."""
@@ -222,7 +225,7 @@ class PersonName:
     features = frozenset({"pname.given", "pname.family", "pname.groups", "pname.middle",
                           "pname.suffix", "pname.key", "pname.tf_key", "pname.family_initial",
                           "pname.phonetic", "pname.given_dob", "pname.alt",
-                          "pname.reading"})  # fmt: skip
+                          "pname.reading", "pname.given_employer"})  # fmt: skip
     ref = ComponentRef.of(
         "normalizer",
         "person_name",
@@ -230,7 +233,8 @@ class PersonName:
         {"honorifics": sorted(HONORIFICS), "suffixes": SUFFIXES,
          "credentials": sorted(CREDENTIALS), "particles": sorted(PARTICLES),
          "groups": [list(g) for g in NAME_GROUPS], "family_canon": FAMILY_CANON,
-         "orders": list(NAME_ORDERS), "compound_alt": "last_word"},
+         "orders": list(NAME_ORDERS), "compound_alt": "last_word",
+         "family_first_swapped_reading": True, "given_employer": "organization_name@2"},
     )  # fmt: skip
 
     def normalize(self, observation: Observation) -> list[Feature]:
@@ -261,7 +265,14 @@ class PersonName:
         if alt := parsed.get("alt"):
             out.append(Feature("pname.alt", 0, f"{alt[0]} {alt[1]}"))
             readings.append(f"{canonical_given(alt[0])} {alt[1]}")
+        if order == "family_first" and "," not in raw and len(family) > 1:
+            readings.append(f"{canonical_given(family)} {FAMILY_CANON.get(given, given)}")
         out += _features("pname.reading", readings)
+        employer = attrs.get("employer")
+        if isinstance(employer, str) and employer.strip():
+            tokens, _ = name_parts(employer)
+            if tokens:
+                out.append(Feature("pname.given_employer", 0, f"{canon} {''.join(tokens)}"))
         if parsed["middle"]:
             out.append(Feature("pname.middle", 0, parsed["middle"]))
         if parsed["suffix"]:

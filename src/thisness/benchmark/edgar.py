@@ -20,6 +20,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from thisness.benchmark.organizations import _typo
+from thisness.normalize.person import NAME_GROUPS
+
 CACHE = Path.home() / ".cache" / "thisness" / "edgar"
 MIN_CONFIDENCE = 0.85  # edgar-persons-pool's individual confidence
 SUFFIXES = frozenset({"JR", "SR", "II", "III", "IV"})  # a lone "V" is an initial
@@ -318,7 +321,7 @@ def audit(db: Path = CACHE / "edgar.duckdb", *, n: int = 40, seed: int = 1) -> d
 
 # -- the benchmark (design 09 §4) -------------------------------------------------------
 
-GENERATOR_VERSION = "1"
+GENERATOR_VERSION = "2"
 MODES = ("hidden", "partial")
 US_STATES = frozenset(
     [
@@ -425,6 +428,77 @@ def given_first(name: str) -> str:
     return " ".join(ordered + suffixes)
 
 
+OTHER_SOURCES = ("crm", "board", "screening")
+OTHER_EMPLOYER = {"crm": 0.8, "board": 1.0, "screening": 0.3}
+# A given name's other spellings: the person profile's nickname and transliteration groups.
+_NICKNAMES: dict[str, list[str]] = defaultdict(list)
+for _group in NAME_GROUPS:
+    for _name in _group:
+        _NICKNAMES[_name] += [n for n in _group if n != _name and len(n) > 2]
+_EDGAR_MARKER = re.compile(r"\s*/[A-Z]{2,3}/?\s*$|\s*/(NEW|DE|MD)/?\b", re.IGNORECASE)
+_LEGAL_FORM = re.compile(
+    r",?\s+(inc|incorporated|corp|corporation|co|company|ltd|limited|plc|n\.?v|s\.?a|l\.?p|"
+    r"llc|holdings?)\.?$",
+    re.IGNORECASE,
+)
+
+
+def _other_sources(rng: _random.Random) -> list[str]:
+    """One to three other systems hold a record of the person."""
+    count = 1 + (rng.random() < 0.5) + (rng.random() < 0.25)
+    return rng.sample(OTHER_SOURCES, count)
+
+
+def _other_name(name: str, rng: _random.Random) -> str:
+    """How a CRM, a board list or a screening list writes an EDGAR name (design 09 §4)."""
+    words = [w for w in re.sub(r"[,]", " ", _strip_marker(name)).split() if w]
+    suffix = [w for w in words[1:] if w.upper().strip(".") in SUFFIXES]
+    words = [w for w in words if w not in suffix]
+    if len(words) < 2:
+        return " ".join(words + suffix)
+    family, given, middle = words[0], words[1], words[2:]
+    if given.lower() in _NICKNAMES and rng.random() < 0.3:
+        given = rng.choice(_NICKNAMES[given.lower()])
+    r = rng.random()
+    if middle and r < 0.35:
+        middle = []
+    elif middle and r < 0.7:
+        middle = [m[0] + "." for m in middle]
+    if suffix and rng.random() < 0.3:
+        suffix = []  # "Robert F Shuford" for Robert F Shuford Jr: the hardest real case
+    if rng.random() < 0.06:
+        if rng.random() < 0.5:
+            given = _typo(given, rng)
+        else:
+            family = _typo(family, rng)
+
+    def cased(w: str) -> str:
+        return w.capitalize() if (w.isupper() or w.islower()) and len(w) > 2 else w
+
+    given, family = cased(given), cased(family)
+    middle = [cased(m) for m in middle]
+    suffix = [s.capitalize() if s.upper().strip(".") in ("JR", "SR") else s.upper()
+              for s in suffix]  # fmt: skip
+    if rng.random() < 0.15:
+        text = " ".join([f"{family},", given, *middle, *suffix])
+    else:
+        text = " ".join([given, *middle, family, *suffix])
+    return text.upper() if rng.random() < 0.15 else text
+
+
+def _employer_as_written(issuer: str, rng: _random.Random) -> str:
+    """An issuer as others write it: without EDGAR's state marker, often without its
+    legal form, in their own case."""
+    name = _EDGAR_MARKER.sub("", issuer).strip(" ,")
+    if rng.random() < 0.5:
+        name = _LEGAL_FORM.sub("", name).strip(" ,") or name
+    if rng.random() < 0.1:
+        name = name.replace(" & ", " and ") if " & " in name else name.replace(" and ", " & ")
+    if name.isupper() and rng.random() < 0.6:
+        name = " ".join(w.capitalize() if len(w) > 3 else w for w in name.split())
+    return name
+
+
 def _kind(cik: str, d: dict[str, Any], keys: set[str]) -> str:
     if name_key(d["people"][cik]) in keys:
         return "namesake"
@@ -440,7 +514,9 @@ def generate(db: Path = CACHE / "edgar.duckdb", n: int = 1000, seed: int = 20261
     """About ``n`` people (design 09 §4): half from shared-name groups with every
     namesake, an eighth renamed, an eighth with a generational suffix, the rest at
     random. Each person has their EDGAR records (every spelling and former name, family
-    first) and one record from another system, given first."""
+    first) and one to three records from other systems (a CRM, a board list, a screening
+    list) as those write people: given first, with nicknames, initials, dropped middle
+    names and suffixes, typos, former names, employers written their own way."""
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}")
     d = _load(db)
@@ -504,17 +580,127 @@ def generate(db: Path = CACHE / "edgar.duckdb", n: int = 1000, seed: int = 20261
                 if mode == "partial":
                     attrs["identifiers"] = [f"CIK:{cik}"]
                 records.append(Record(f"edgar-{cik}-{i}", person, attrs, "edgar"))
-        cik = rng.choice(ciks)
-        roles = d["roles"][cik]
-        attrs = {"name": given_first(d["people"][cik])}
-        if roles and rng.random() < 0.8:
-            attrs["employer"] = rng.choice(roles)[1]
-        if d["places"][cik] and rng.random() < 0.6:
-            attrs["city"] = rng.choice(sorted(d["places"][cik], key=str))[0].strip(" ,").title()
-        records.append(Record(f"other-{person}", person, attrs, "other"))
+        for j, source in enumerate(_other_sources(rng)):
+            cik = rng.choice(ciks)
+            former = [f for c in ciks for f in d["former"].get(c, [])
+                      if not _NOT_A_NAME.search(f) and not _NOT_A_PERSON.search(f)]  # fmt: skip
+            name = rng.choice(former) if former and rng.random() < 0.35 else d["people"][cik]
+            attrs = {"name": _other_name(name, rng)}
+            roles = d["roles"][cik]
+            if source == "board":
+                roles = [r for r in roles if r[3]] or roles  # directorships
+            if roles and rng.random() < OTHER_EMPLOYER[source]:
+                attrs["employer"] = _employer_as_written(rng.choice(roles)[1] or "", rng)
+            places = sorted(d["places"][cik], key=str)
+            r = rng.random()
+            if places and r < 0.5:
+                attrs["city"] = rng.choice(places)[0].strip(" ,").title()
+            elif places and r < 0.7 and any(state in US_STATES for _, state in places):
+                attrs["country"] = "US"
+            records.append(Record(f"{source}-{person}-{j}", person, attrs, source))
     rng.shuffle(records)
     return Benchmark(seed, records, people, mode)
 
 
 def standard(n: int = 1000, seed: int = 20261016, *, mode: str = "hidden") -> Benchmark:
-    return generate(CACHE / "edgar.duckdb", n, seed, mode=mode)
+    """The EDGAR benchmark from the staged data (``python -m thisness.benchmark edgar-stage``)."""
+    db = CACHE / "edgar.duckdb"
+    if not db.exists():
+        raise FileNotFoundError(
+            f"{db}: stage EDGAR people first (python -m thisness.benchmark edgar-stage --store PATH)"
+        )
+    return generate(db, n, seed, mode=mode)
+
+
+# -- the shipped fixture (design 09 §7) -------------------------------------------------
+
+FIXTURE = Path(__file__).parent / "data" / "edgar"
+TABLES = ("people", "names", "former_names", "roles", "places", "meta")
+ATTRIBUTION = (
+    "Contains information from SEC EDGAR Section 16 filings (Forms 3, 4 and 5). EDGAR "
+    "filings are records of the US government; the SEC is credited as a courtesy."
+)
+
+
+def _stable(cik: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(cik.encode()).hexdigest()
+
+
+def make_fixture(db: Path = CACHE / "edgar.duckdb", out: Path = FIXTURE, *,
+                 groups: int = 15, renamed: int = 30, plain: int = 20) -> Path:  # fmt: skip
+    """A small hard slice of the staged data to ship for tests: whole shared-name groups
+    holding one person with two CIKs, whole groups holding a father and son at one issuer
+    (conflicting suffixes, a shared issuer), other whole groups, renamed people, and a
+    few plain ones. About 150 CIKs, with the fields of §7 only."""
+    import duckdb
+
+    d = _load(db)
+    pairs = _pairs(d)
+    group_of = {c: name_key(n) for c, n in d["people"].items()}
+    members: dict[str, list[str]] = defaultdict(list)
+    for cik, key in group_of.items():
+        members[key].append(cik)
+
+    def ordered(items) -> list:
+        return sorted(set(items), key=lambda k: _stable(str(k)))
+
+    merged = ordered(group_of[a] for a, _ in pairs["issuer"])
+    father_son = ordered(group_of[a] for a, b in pairs["conflicting"]
+                         if d["issuers"][a] & d["issuers"][b] and _parts(d["people"][a])[1]
+                         != _parts(d["people"][b])[1])  # fmt: skip
+    other = ordered(group_of[a] for a, _ in pairs["neither"])
+    t = truth(data=d)
+    keys: list[str] = []
+    for pool in (merged, father_son, other):
+        keys += [k for k in pool if k not in keys and len(members[k]) <= 4
+                 and all(c in t.person_of for c in members[k])][:groups]  # fmt: skip
+    ciks = {c for k in keys for c in members[k]}
+    ciks |= set([c for c in ordered(d["former"]) if c in t.person_of][:renamed])
+    ciks |= set([c for c in ordered(t.person_of) if c not in ciks][:plain])
+    out.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect(str(db), read_only=True)
+    try:
+        con.execute("CREATE TEMP TABLE pick (cik VARCHAR)")
+        con.executemany("INSERT INTO pick VALUES (?)", [(c,) for c in sorted(ciks)])
+        for table in TABLES[:-1]:
+            con.execute(f"COPY (SELECT * FROM {table} WHERE cik IN (SELECT cik FROM pick) "
+                        f"ORDER BY ALL) TO '{out / (table + '.parquet')}' (FORMAT parquet)")  # fmt: skip
+        version = con.execute("SELECT value FROM meta WHERE key = 'classifier_version'").fetchone()
+    finally:
+        con.close()
+    (out / "README.md").write_text(
+        "# EDGAR people fixture\n\n"
+        "A small slice of real data for tests (design 09): Section 16 insiders as staged "
+        "from an edgar-persons-pool store (classifier version "
+        f"{version[0] if version else '?'}): names, former names, CIKs, issuers, titles, "
+        "role flags, filing dates, city and state. No street addresses or postal codes.\n\n"
+        f"{ATTRIBUTION}\n\nRebuild with `python -m thisness.benchmark edgar-fixture`.\n",
+        encoding="utf-8",
+    )
+    return out
+
+
+def fixture_db(path: Path, source: Path = FIXTURE) -> Path:
+    """A DuckDB file holding the shipped fixture as the staged tables."""
+    import duckdb
+
+    con = duckdb.connect(str(path))
+    try:
+        for table in TABLES[:-1]:
+            con.execute(f"CREATE OR REPLACE TABLE {table} AS "
+                        f"SELECT * FROM read_parquet('{source / (table + '.parquet')}')")  # fmt: skip
+        con.execute("CREATE OR REPLACE TABLE meta (key VARCHAR, value VARCHAR)")
+        con.execute("INSERT INTO meta VALUES ('source_store', 'thisness/benchmark/data/edgar')")
+    finally:
+        con.close()
+    return path
+
+
+def from_fixture(n: int = 150, seed: int = 20261016, *, mode: str = "hidden") -> Benchmark:
+    """The EDGAR benchmark from the shipped fixture, for tests."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        return generate(fixture_db(Path(tmp) / "fixture.duckdb"), n, seed, mode=mode)

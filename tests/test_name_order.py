@@ -61,7 +61,7 @@ def test_name_order_is_read_from_the_record():
     assert features(name="SMITH JOHN A", name_order="sideways")["pname.key"] == ["smith a"]
     f = edgar("Pineyro Sublett Carla")
     assert f["pname.alt"] == ["carla sublett"]
-    assert f["pname.reading"] == ["carla sublett", "sublett pineyro"]
+    assert f["pname.reading"] == ["carla sublett", "pineyro sublett", "sublett pineyro"]
     assert features(name="Carla Pineyro Sublett")["pname.reading"] == ["carla sublett"]
 
 
@@ -87,3 +87,19 @@ def test_compound_readings_find_each_other():
     assert NAME.levels[
         NAME.compare(edgar("LOSADA MORENO ANGEL"), edgar("Moreno Angel Losada"))
     ] == ("fuzzy")
+
+
+def test_family_first_names_also_block_swapped():
+    """EDGAR is not always consistent: 'Hui Liu' and 'Liu Hui' under one CIK."""
+    assert edgar("Hui Liu")["pname.reading"] == ["hui liu", "liu hui"]
+    assert features(name="Hui Liu")["pname.reading"] == ["hui liu"]
+
+
+def test_given_name_and_employer_block_without_a_birth_date():
+    f = features(name="Julie Huber", employer="Stifel Financial Corp")
+    g = edgar("SMITH JULIE A")
+    assert "pname.given_employer" not in g
+    assert (
+        f["pname.given_employer"]
+        == features(name="Julie Smith", employer="STIFEL FINANCIAL CORP")["pname.given_employer"]
+    )
