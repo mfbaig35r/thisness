@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-10-16)
 
 Real people (design 09).
 
@@ -13,6 +13,7 @@ Real people (design 09).
   The `initial` level is capped at 8 bits. On 10,000 real people, false-merge clusters fall from 51 to 29 (precision .9967 to .9985, recall .726 to .715).
 - **Given name and employer** is a new person blocking key (`given_employer`): where there is no date of birth, it finds family names that changed or were mistyped. Colleagues share employers, so EM does not learn from its pairs.
 - **Benchmarks.** `python -m thisness.benchmark edgar-stage --store PATH` stages SEC Section 16 insiders from an edgar-persons-pool store; `edgar-truth` and `edgar-audit` measure the CIK as truth; `thisness eval --type person --source edgar` runs the benchmark: real people and namesakes, each with their EDGAR records and up to three records from other systems written as those write people (nicknames, initials, dropped suffixes, typos, former names, employers without their legal form). A fixture of about 150 insiders ships for tests. `thisness eval --assistant` has the review assistant answer every review a run leaves open and scores its suggestions against the truth (`benchmark.evaluate.recommendation_accuracy`). On 1,000 real people gpt-6-luna deciding pairs raised false-merge clusters from 2 to 18, while its review suggestions were right 86% of the time; people keep `model_role="suggest"`.
+- **Upgrading.** A store built with 0.2.0 keeps working: opening it recomputes person features with the new normalizer, and a person model fitted for the old comparisons is replaced on the next resolve.
 
 ## 0.2.0 (2026-10-15)
 

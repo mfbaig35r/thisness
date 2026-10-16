@@ -52,7 +52,7 @@ Every decision is stored with its evidence; merges and splits are reversible led
 A domain is a resolution profile: its attributes, normalizers, comparisons, constraints and the guidance a model is given. Three ship.
 
 - **Organizations** (`thisness.profiles.organization`): names with legal forms, abbreviations, acronyms and group-company qualifiers; websites, emails, registration IDs, addresses. A shared brand or a group's sibling companies are relationship candidates, never merges.
-- **People** (`thisness.profiles.person`): names with nicknames, initials and spelling variants; dates of birth, emails, phones, addresses. Same name at the same address (a household, a parent and child) stays a relationship until evidence says otherwise.
+- **People** (`thisness.profiles.person`): names with nicknames, initials and spelling variants; dates of birth, emails, phones, addresses. Same name at the same address (a household, a parent and child) stays a relationship until evidence says otherwise. A source that writes names family first, as registries such as SEC EDGAR do ("SMITH JOHN A JR"), says so with a `name_order` attribute.
 - **Taxa** (`thisness.profiles.taxon`): scientific names parsed into genus, epithets, rank and authorship. Synonyms join their accepted taxon when an authority such as World Flora Online or the Catalogue of Life is loaded, and every label says which authority supplied it.
 
 ## From the command line
@@ -88,7 +88,7 @@ Set `--budget`: there is no default limit.
 
 ## How well it works
 
-`thisness eval` resolves a benchmark with known truth and reports precision, recall and false-merge clusters. Measured so far (design 07 §13; design 06 §10):
+`thisness eval` resolves a benchmark with known truth and reports precision, recall and false-merge clusters. Measured so far (design 09 §11; design 07 §13; design 06 §10):
 
 | Benchmark | Records | P | R | False-merge clusters |
 |---|---|---|---|---|
@@ -96,6 +96,8 @@ Set `--budget`: there is no default limit.
 | The same, gpt-6-luna deciding contested pairs ($0.62) | 3,507 | .9965 | .938 | 5 |
 | Real UK companies, at scale | 46,565 | .9965 | .934 | 63 |
 | Synthetic organizations, 4,000 | | .9995 | .938 | 4 |
+| Real people: 10,000 SEC Section 16 insiders (EDGAR), no model | 28,692 | .9985 | .715 | 29 |
+| The same, every contested pair answered correctly | 28,692 | .9992 | .948 | 15 |
 
 ```bash
 thisness eval --size 805 4000                     # synthetic organizations (or --type person)
@@ -107,10 +109,13 @@ thisness eval --source uk --adjudicator openai --model gpt-6-luna --mode decide 
 
 The UK benchmark's hard cases are real: 62% of live UK companies share a registered address, and a record that says only "Sports Direct" sits beside four real Sports Direct companies. The record variations (shortened names, typos, partial addresses) are generated from the true company, so the truth is known.
 
+The people benchmark is real company insiders and their real namesakes: one insider name in sixteen is shared, and a father and son often sit on one board. It is staged from a local [edgar-persons-pool](docs/design/09-real-people.md) store (`python -m thisness.benchmark edgar-stage --store PATH`, then `thisness eval --type person --source edgar`); a fixture of about 150 insiders ships for tests. `thisness eval --assistant` scores the review assistant's suggestions against the truth.
+
 ## Known limits
 
 - **Memory grows with candidate pairs.** 46,565 records took 7.5 minutes of CPU and 7.8 GB peak memory; scoring holds every candidate pair in Python. Tested to about fifty thousand records.
 - **Candidates come from blocking keys.** There is no embedding-based candidate generator yet, so two records that share no blocking key (a renamed company with nothing else in common, a heterotypic synonym with no authority loaded) are never compared directly.
+- **For people, the model suggests.** On 1,000 real people, gpt-6-luna deciding contested pairs merged namesakes (false-merge clusters 2 to 18); as the review assistant, 86% of its suggestions would be right. People default to `model_role="suggest"`.
 - **Model costs are real.** About $0.62 for 400 UK companies with gpt-6-luna; the default model is `claude-sonnet-5`. Use `--budget`, and `--replay` to re-run without paying again.
 - **The network benchmarks download data.** WFO families beyond the shipped three, the Catalogue of Life, and the UK sources are fetched on demand and cached under `~/.cache/thisness`. Everything else, including the Workbench, runs offline.
 
@@ -136,6 +141,7 @@ The UK benchmark's hard cases are real: 62% of live UK companies share a registe
   - [06 taxonomy, the third domain](docs/design/06-m4-taxonomy.md)
   - [07 real organizations](docs/design/07-m5-real-organizations.md)
   - [08 supplier lists](docs/design/08-supplier-lists.md)
+  - [09 real people](docs/design/09-real-people.md)
 - [Changelog](CHANGELOG.md)
 
 ## Development
@@ -152,4 +158,4 @@ Releases publish to PyPI from a version tag: bump `version` in `pyproject.toml`,
 
 Thisness is Apache-2.0. See [LICENSE](LICENSE).
 
-Bundled and fetched data keep their own terms, credited where they ship: World Flora Online (CC0 1.0) in `benchmark/data`; GLEIF Golden Copy (CC0 1.0) and Companies House data (Open Government Licence v3.0) in `benchmark/data/uk`; the Catalogue of Life (CC BY 4.0), fetched on demand with attribution; and the Workbench's fonts, icons and scripts in `ui/static/THIRD_PARTY.md`.
+Bundled and fetched data keep their own terms, credited where they ship: World Flora Online (CC0 1.0) in `benchmark/data`; GLEIF Golden Copy (CC0 1.0) and Companies House data (Open Government Licence v3.0) in `benchmark/data/uk`; SEC EDGAR Section 16 filings (US government records) in `benchmark/data/edgar`; the Catalogue of Life (CC BY 4.0), fetched on demand with attribution; and the Workbench's fonts, icons and scripts in `ui/static/THIRD_PARTY.md`.
