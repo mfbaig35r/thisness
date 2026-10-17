@@ -95,7 +95,7 @@ And I increasingly think entity resolution is one of the missing foundational pr
 
 ---
 
-# From records to reality
+## From records to reality
 
 Most software starts from records.
 
@@ -144,18 +144,18 @@ You can leave these as three disconnected records.
 Or you can resolve them to:
 
 ```text
-                 ┌────────────────────────────┐
-                 │ Organization: org_123      │
-                 │                            │
-                 │ International Business     │
-                 │ Machines Corporation       │
-                 └─────────────┬──────────────┘
-                               │
-               ┌───────────────┼────────────────┐
-               │               │                │
-               ▼               ▼                ▼
-          CRM record      Invoice record   Contract mention
-             "IBM"         "IBM Corp."       full legal name
+          ┌──────────────────────────────┐
+          │ Organization: org_123        │
+          │                              │
+          │ International Business       │
+          │ Machines Corporation         │
+          └──────────────┬───────────────┘
+                         │
+       ┌─────────────────┼─────────────────┐
+       │                 │                 │
+       ▼                 ▼                 ▼
+  CRM record      Invoice record   Contract mention
+     "IBM"          "IBM Corp."     full legal name
 ```
 
 Now we have something much more useful.
@@ -170,7 +170,7 @@ That is the idea behind Thisness.
 
 ---
 
-# Thisness: identity as infrastructure
+## Thisness: identity as infrastructure
 
 Thisness is intended to be a general-purpose open-source identity-resolution engine.
 
@@ -183,30 +183,30 @@ Its job is to take imperfect observations and determine what underlying things t
 Conceptually:
 
 ```text
-                  Raw Observations
-                        │
-                        ▼
-                  Normalization
-                        │
-                        ▼
-               Candidate Generation
-                        │
-                        ▼
-                     Evidence
-                        │
-                        ▼
-                    Resolution
-                        │
-                        ▼
-                      Policy
-                        │
-             ┌──────────┼──────────┐
-             │          │          │
-             ▼          ▼          ▼
-          Attach      Review     Create
-             │
-             ▼
-                  Stable Entity
+            Raw Observations
+                    │
+                    ▼
+              Normalization
+                    │
+                    ▼
+          Candidate Generation
+                    │
+                    ▼
+                Evidence
+                    │
+                    ▼
+               Resolution
+                    │
+                    ▼
+                 Policy
+                    │
+       ┌────────────┼────────────┐
+       │            │            │
+       ▼            ▼            ▼
+    Attach       Review       Create
+       │
+       ▼
+ Stable Entity
 ```
 
 But the important part is what **doesn't** disappear.
@@ -227,7 +227,7 @@ Identity becomes something the system can reason about **without pretending it i
 
 ---
 
-# Observations are not entities
+## Observations are not entities
 
 This is probably the most important design decision in the system.
 
@@ -283,7 +283,7 @@ This becomes extremely important when these identities feed downstream graphs an
 
 ---
 
-# The graph is where this gets interesting
+## The graph is where this gets interesting
 
 Entity resolution by itself is useful.
 
@@ -294,29 +294,29 @@ A graph of the world represented in your data.
 For example:
 
 ```text
-                        ┌─────────────┐
-                        │  Person A   │
-                        └──────┬──────┘
-                               │ works_at
-                               ▼
-                       ┌──────────────┐
-                       │ Company XYZ  │
-                       └──────┬───────┘
-                              │ party_to
-                              ▼
-                       ┌──────────────┐
-                       │ Contract 42  │
-                       └──────┬───────┘
-                              │ covers
-                              ▼
-                       ┌──────────────┐
-                       │ Supplier ABC │
-                       └──────┬───────┘
-                              │ exposed_to
-                              ▼
-                       ┌──────────────┐
-                       │   Risk 17    │
-                       └──────────────┘
+┌──────────────┐
+│   Person A   │
+└───────┬──────┘
+        │ works_at
+        ▼
+┌──────────────┐
+│ Company XYZ  │
+└───────┬──────┘
+        │ party_to
+        ▼
+┌──────────────┐
+│ Contract 42  │
+└───────┬──────┘
+        │ covers
+        ▼
+┌──────────────┐
+│ Supplier ABC │
+└───────┬──────┘
+        │ exposed_to
+        ▼
+┌──────────────┐
+│   Risk 17    │
+└──────────────┘
 ```
 
 Behind each node might be hundreds or thousands of observations.
@@ -331,7 +331,7 @@ That is where I think the connection to large language models becomes especially
 
 ---
 
-# LLMs don't need more context. They need better context.
+## LLMs don't need more context. They need better context.
 
 A lot of AI architecture today is implicitly based on the idea that larger context windows solve knowledge problems.
 
@@ -346,18 +346,18 @@ As context gets larger, the model has more information available, but it also ha
 If I want an LLM to understand a particular person across 10,000 legal documents, the naive architecture looks something like:
 
 ```text
-10,000 documents
-       │
-       ▼
-retrieve vaguely relevant chunks
-       │
-       ▼
-maybe 50,000–200,000 tokens
-       │
-       ▼
-       LLM
-       │
-       ▼
+                    10,000 documents
+                            │
+                            ▼
+            retrieve vaguely relevant chunks
+                            │
+                            ▼
+               maybe 50,000–200,000 tokens
+                            │
+                            ▼
+                           LLM
+                            │
+                            ▼
 "Please figure out who this person is and what matters."
 ```
 
@@ -376,28 +376,27 @@ Context selection.
 Now compare that with a resolved graph.
 
 ```text
-10,000 Documents
-       │
-       ▼
-Entity + Relationship Resolution
-       │
-       ▼
-┌───────────────────────────────────┐
-│ person_7281                       │
-│                                   │
-│ 143 document observations         │
-│ 8 contracts                       │
-│ 3 organizations                   │
-│ 11 material events                │
-│ 4 unresolved contradictions       │
-│ temporal history                  │
-└───────────────────┬───────────────┘
-                    │
-                    ▼
-          targeted context assembly
-                    │
-                    ▼
-                  LLM
+                    10,000 Documents
+                            │
+                            ▼
+            Entity + Relationship Resolution
+                            │
+          ┌─────────────────▼─────────────────┐
+          │ person_7281                       │
+          │                                   │
+          │ 143 document observations         │
+          │ 8 contracts                       │
+          │ 3 organizations                   │
+          │ 11 material events                │
+          │ 4 unresolved contradictions       │
+          │ temporal history                  │
+          └─────────────────┬─────────────────┘
+                            │
+                            ▼
+                targeted context assembly
+                            │
+                            ▼
+                           LLM
 ```
 
 The model no longer has to discover the entity.
@@ -408,7 +407,7 @@ That is a completely different workload.
 
 ---
 
-# The graph is a context compiler
+## The graph is a context compiler
 
 I've started thinking about the semantic graph as something like a **context compiler for language models**.
 
@@ -446,7 +445,7 @@ It organizes it.
 
 ---
 
-# This changes the economics of context
+## This changes the economics of context
 
 LLM architecture has an economic dimension that gets surprisingly little attention.
 
@@ -507,7 +506,7 @@ It's **higher information density per token**.
 
 ---
 
-# RAG tells you what looks relevant
+## RAG tells you what looks relevant
 
 This is also why I think entity resolution and retrieval solve different problems.
 
@@ -541,18 +540,20 @@ Embeddings should help find candidates.
 Evidence and resolution policy should determine identity.
 
 ```text
-                     Vector Search
-                          │
-                          │ "these look related"
-                          ▼
-                   Candidate Entities
-                          │
-                          ▼
-                  Identity Evidence
-                          │
-                ┌─────────┴─────────┐
-                │                   │
-              MATCH             NOT MATCH
+         Vector Search
+               │
+               │ "these look related"
+               │
+               ▼
+      Candidate Entities
+               │
+               ▼
+       Identity Evidence
+               │
+    ┌──────────┴──────────┐
+    │                     │
+    ▼                     ▼
+  MATCH               NOT MATCH
 ```
 
 Similarity is useful.
@@ -561,7 +562,7 @@ Identity is stronger.
 
 ---
 
-# The ontology isn't just a prettier graph
+## The ontology isn't just a prettier graph
 
 This is where the architecture starts resembling the interesting parts of Palantir.
 
@@ -620,7 +621,7 @@ The semantic objects remain comparatively stable.
 
 ---
 
-# But the ontology must remain accountable
+## But the ontology must remain accountable
 
 This is the part I think matters if you're trying to build this philosophy differently.
 
@@ -672,7 +673,7 @@ The graph cannot become a collection of unexplained assertions generated by mode
 
 ---
 
-# "Not evil" should be an architectural property
+## "Not evil" should be an architectural property
 
 I say "Palantir but not evil" somewhat jokingly.
 
@@ -708,43 +709,43 @@ They're engineering requirements.
 
 ---
 
-# Thisness is only the first layer
+## Thisness is only the first layer
 
 Thisness should remain small.
 
 Its job is identity.
 
 ```text
-                   OPEN SEMANTIC PLATFORM
+     OPEN SEMANTIC PLATFORM
 
-          ┌──────────────────────────────┐
-          │     Agents / Applications    │
-          └───────────────┬──────────────┘
-                          │
-          ┌───────────────▼──────────────┐
-          │      Semantic / Ontology     │
-          │                              │
-          │ People • Companies • Risks   │
-          │ Contracts • Products • etc.  │
-          └───────────────┬──────────────┘
-                          │
-          ┌───────────────▼──────────────┐
-          │          Thisness            │
-          │                              │
-          │ observations                 │
-          │ evidence                     │
-          │ identity                     │
-          │ resolution memory            │
-          │ relationships                │
-          │ provenance                   │
-          └───────────────┬──────────────┘
-                          │
-          ┌───────────────▼──────────────┐
-          │       Enterprise Data        │
-          │                              │
-          │ DBs • Docs • Email • APIs    │
-          │ Video • Code • Warehouses    │
-          └──────────────────────────────┘
+┌──────────────────────────────┐
+│    Agents / Applications     │
+└───────────────┬──────────────┘
+                │
+┌───────────────▼──────────────┐
+│     Semantic / Ontology      │
+│                              │
+│ People • Companies • Risks   │
+│ Contracts • Products • etc.  │
+└───────────────┬──────────────┘
+                │
+┌───────────────▼──────────────┐
+│           Thisness           │
+│                              │
+│ observations                 │
+│ evidence                     │
+│ identity                     │
+│ resolution memory            │
+│ relationships                │
+│ provenance                   │
+└───────────────┬──────────────┘
+                │
+┌───────────────▼──────────────┐
+│       Enterprise Data        │
+│                              │
+│ DBs • Docs • Email • APIs    │
+│ Video • Code • Warehouses    │
+└──────────────────────────────┘
 ```
 
 Above Thisness can eventually sit an open ontology layer.
@@ -757,7 +758,7 @@ That's why I think this is the right place to begin.
 
 ---
 
-# The weird examples are actually the important ones
+## The weird examples are actually the important ones
 
 One thing that changed my thinking while designing Thisness was testing the abstraction against use cases that have nothing to do with traditional customer deduplication.
 
@@ -797,7 +798,7 @@ That distinction is what makes the architecture interesting to me.
 
 ---
 
-# Where this could go
+## Where this could go
 
 I don't think the future of enterprise AI is every application independently doing retrieval over raw documents.
 
