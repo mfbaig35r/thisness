@@ -33,6 +33,7 @@ def test_ingest_resolve_and_inspect(tmp_path, capsys):
     assert main(["--store", store, "ingest", str(path), "--resolve"]) == 0
     out = capsys.readouterr().out
     assert "3 rows, 3 new observations" in out and "organization: 3 observations resolved" in out
+    assert "entities in the store" in out
     # Ingesting the same file again stores nothing new.
     assert main(["--store", store, "ingest", str(path)]) == 0
     assert "0 new observations, 3 already stored" in capsys.readouterr().out
@@ -66,6 +67,30 @@ def test_help_lists_every_command(capsys):
     for command in ("ingest", "resolve", "ui", "demo", "history", "dossier", "reviews", "check",
                     "eval"):  # fmt: skip
         assert command in out
+
+
+def test_default_model_follows_the_provider():
+    from thisness import cli
+
+    def models(argv):
+        args = cli.parser().parse_args(argv)
+        cli._default_models(args)
+        return args.model, getattr(args, "group_model", None)
+
+    assert models(["resolve", "--provider", "openai"]) == ("gpt-6-luna", "gpt-6-luna")
+    assert models(["resolve", "--provider", "anthropic"]) == ("claude-sonnet-5", "claude-haiku-4-5")
+    assert models(["recommend"])[0] == "gpt-6-luna"  # a required provider defaults to openai
+    assert models(["eval", "--adjudicator", "anthropic"])[0] == "claude-sonnet-5"
+    assert models(["eval", "--assistant", "openai"])[0] == "gpt-6-luna"
+    assert models(["resolve", "--provider", "openai", "--model", "m"])[0] == "m"
+
+
+def test_version(capsys):
+    from thisness import __version__
+
+    with pytest.raises(SystemExit):
+        main(["--version"])
+    assert capsys.readouterr().out.strip() == f"thisness {__version__}"
 
 
 def test_demo_and_eval_take_a_type(tmp_path, capsys):

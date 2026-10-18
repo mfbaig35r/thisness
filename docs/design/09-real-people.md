@@ -215,6 +215,8 @@ Candidate recall rose from .923 to .961 (and .929 to .963 on seed 1). The synthe
 
 `edgar.from_fixture()` builds the benchmark from it: 417 records; precision 1.0 and candidate recall .95 with no adjudicator.
 
+Since 0.3.1 the fixture lives in `tests/data/edgar`, not in the package: it names real people, and an installed library has no use for test data. The 0.3.0 wheel still carries it. `fixture_db` says where the fixture is when it is missing.
+
 ### 11.4 Step 4: models on real people (evaluation 3)
 
 `thisness eval --assistant {oracle,anthropic,openai}` (new): after the run, the review assistant answers every review the run left open, and `benchmark.evaluate.recommendation_accuracy` scores each suggestion as if accepted. A suggestion is right when its grouping is the truth's; a wrong one would merge different people, leave a match apart, or both. With the oracle as assistant every suggestion is right (620 of 620), a check on the scorer.

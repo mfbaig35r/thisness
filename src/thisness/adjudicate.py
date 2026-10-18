@@ -77,7 +77,7 @@ class Adjudication:
 @dataclass
 class Adjudicator:
     client: LLMClient
-    model: str = "claude-sonnet-5"
+    model: str = "gpt-6-luna"
     mode: Literal["shadow", "decide"] = "shadow"
     floor_bits: float = 6.0
     pairs_per_call: int = 8

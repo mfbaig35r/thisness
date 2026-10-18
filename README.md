@@ -75,12 +75,14 @@ The Workbench is a local web app over the same API: browse entities with the evi
 A model is optional, and the engine never needs one. Where it helps, it is given the contested pairs or the open reviews, with the evidence for each, and its answers are recorded like any other decision.
 
 ```bash
-pip install 'thisness[ui,openai]'   # or [ui,anthropic]; keys from OPENAI_API_KEY / ANTHROPIC_API_KEY
+pip install 'thisness[ui,openai]'   # key from OPENAI_API_KEY
 
-thisness resolve --provider openai --model gpt-6-luna --budget 2   # contested pairs to the model
-thisness recommend --provider openai --model gpt-6-luna --limit 50 # suggested answers for reviews
-thisness ui --provider openai --model gpt-6-luna                   # ask from the Workbench
+thisness resolve --provider openai --budget 2    # contested pairs to the model
+thisness recommend --limit 50                    # suggested answers for reviews
+thisness ui --provider openai                    # ask from the Workbench
 ```
+
+The default model is gpt-6-luna, the model behind every measurement below; `--model` picks another. An Anthropic provider is included (`[ui,anthropic]`, `--provider anthropic`, `ANTHROPIC_API_KEY`) but has not been measured.
 
 What the model does is set per profile (`model_role`): for organizations and taxa it decides contested pairs, and its "same" yields to its own "different" or to a cannot-link constraint; for people it only suggests review answers, since measured on people it was both too cautious and too credulous. `--model-role decide|suggest|shadow|off` overrides that for a run. `--record` keeps every exchange in a cassette and `--replay` answers from one, free and offline. Any OpenAI-compatible server works with `--base-url` (and `--local` when it is yours).
 
@@ -104,19 +106,19 @@ thisness eval --size 805 4000                     # synthetic organizations (or 
 thisness eval --type taxon --reference            # WFO plant names, with WFO's own rows
 python -m thisness.benchmark uk-stage             # download GLEIF and Companies House (~1 GB, once)
 thisness eval --source uk --size 400              # real UK companies, identifiers hidden
-thisness eval --source uk --adjudicator openai --model gpt-6-luna --mode decide --budget 2
+thisness eval --source uk --adjudicator openai --mode decide --budget 2
 ```
 
 The UK benchmark's hard cases are real: 62% of live UK companies share a registered address, and a record that says only "Sports Direct" sits beside four real Sports Direct companies. The record variations (shortened names, typos, partial addresses) are generated from the true company, so the truth is known.
 
-The people benchmark is real company insiders and their real namesakes: one insider name in sixteen is shared, and a father and son often sit on one board. It is staged from a local [edgar-persons-pool](docs/design/09-real-people.md) store (`python -m thisness.benchmark edgar-stage --store PATH`, then `thisness eval --type person --source edgar`); a fixture of about 150 insiders ships for tests. `thisness eval --assistant` scores the review assistant's suggestions against the truth.
+The people benchmark is real company insiders and their real namesakes: one insider name in sixteen is shared, and a father and son often sit on one board. It is staged from a local [edgar-persons-pool](docs/design/09-real-people.md) store (`python -m thisness.benchmark edgar-stage --store PATH`, then `thisness eval --type person --source edgar`); a fixture of about 150 insiders is kept with the tests, not in the installed package. `thisness eval --assistant` scores the review assistant's suggestions against the truth.
 
 ## Known limits
 
 - **Memory grows with candidate pairs.** 46,565 records took 7.5 minutes of CPU and 7.8 GB peak memory; scoring holds every candidate pair in Python. Tested to about fifty thousand records.
 - **Candidates come from blocking keys.** There is no embedding-based candidate generator yet, so two records that share no blocking key (a renamed company with nothing else in common, a heterotypic synonym with no authority loaded) are never compared directly.
 - **For people, the model suggests.** On 1,000 real people, gpt-6-luna deciding contested pairs merged namesakes (false-merge clusters 2 to 18); as the review assistant, 86% of its suggestions would be right. People default to `model_role="suggest"`.
-- **Model costs are real.** About $0.62 for 400 UK companies with gpt-6-luna; the default model is `claude-sonnet-5`. Use `--budget`, and `--replay` to re-run without paying again.
+- **Model costs are real.** About $0.62 for 400 UK companies with gpt-6-luna, the default. Use `--budget`, and `--replay` to re-run without paying again.
 - **The network benchmarks download data.** WFO families beyond the shipped three, the Catalogue of Life, and the UK sources are fetched on demand and cached under `~/.cache/thisness`. Everything else, including the Workbench, runs offline.
 
 ## What it is
@@ -126,6 +128,15 @@ The people benchmark is real company insiders and their real namesakes: one insi
 - **Identity is not relationship.** "Subsidiary of" and "brand of" are relationships between distinct entities, never merges.
 - **Everything is reversible.** Merges and splits are ledger events over memberships. Nothing is destructively collapsed, and the ledger alone can rebuild current state.
 - **Models propose; policy decides.** Rules, Fellegi-Sunter, LLMs and people all contribute decisions. Only a commit, citing those decisions, changes identity state.
+
+## Compared with
+
+- **[Splink](https://github.com/moj-analytical-services/splink)** is the closest relative, and the better choice for a large one-off linkage job: Fellegi-Sunter with term-frequency adjustments, run in DuckDB, Spark and other backends, at a scale Thisness does not reach yet. Thisness uses the same model family but keeps the result: entity IDs that stay stable across runs, a ledger of merges and splits, a review queue, and the evidence behind every membership.
+- **[Dedupe](https://github.com/dedupeio/dedupe)** learns a matcher from pairs you label interactively. In Thisness, answered reviews are also kept as labels for calibrating models (design 04), but a review exists to decide an identity, and its answer is recorded as a decision like any other.
+- **[Zingg](https://github.com/zinggAI/zingg)** learns matching from labelled pairs and runs on Spark. Thisness is a library over one local DuckDB file.
+- **[Senzing](https://senzing.com)** is a commercial engine for persistent, real-time entity resolution with relationships. Thisness aims at the same shape, identity maintained as a service rather than produced by a batch job, as open source that can be inspected down to each decision.
+
+The longer survey is in [`docs/research/`](docs/research/entity-resolution-landscape.md).
 
 ## Documents
 
@@ -158,4 +169,4 @@ Releases publish to PyPI from a version tag: bump `version` in `pyproject.toml`,
 
 Thisness is Apache-2.0. See [LICENSE](LICENSE).
 
-Bundled and fetched data keep their own terms, credited where they ship: World Flora Online (CC0 1.0) in `benchmark/data`; GLEIF Golden Copy (CC0 1.0) and Companies House data (Open Government Licence v3.0) in `benchmark/data/uk`; SEC EDGAR Section 16 filings (US government records) in `benchmark/data/edgar`; the Catalogue of Life (CC BY 4.0), fetched on demand with attribution; and the Workbench's fonts, icons and scripts in `ui/static/THIRD_PARTY.md`.
+Bundled and fetched data keep their own terms, credited where they ship: World Flora Online (CC0 1.0) in `benchmark/data`; GLEIF Golden Copy (CC0 1.0) and Companies House data (Open Government Licence v3.0) in `benchmark/data/uk`; SEC EDGAR Section 16 filings (US government records) in `tests/data/edgar`, kept out of the installed package; the Catalogue of Life (CC BY 4.0), fetched on demand with attribution; and the Workbench's fonts, icons and scripts in `ui/static/THIRD_PARTY.md`.

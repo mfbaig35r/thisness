@@ -91,7 +91,7 @@ class _Request:
 @dataclass
 class ReviewAssistant:
     client: LLMClient
-    model: str = "claude-sonnet-5"
+    model: str = "gpt-6-luna"
     prompt: Prompt = field(default_factory=default_prompt)
 
     @property

@@ -612,9 +612,11 @@ def standard(n: int = 1000, seed: int = 20261016, *, mode: str = "hidden") -> Be
     return generate(db, n, seed, mode=mode)
 
 
-# -- the shipped fixture (design 09 §7) -------------------------------------------------
+# -- the test fixture (design 09 §7) ---------------------------------------------------
 
-FIXTURE = Path(__file__).parent / "data" / "edgar"
+# Real people's names, so it stays with the tests in the source repository and out of
+# the wheel (design 09 §11.3).
+FIXTURE = Path(__file__).resolve().parents[3] / "tests" / "data" / "edgar"
 TABLES = ("people", "names", "former_names", "roles", "places", "meta")
 ATTRIBUTION = (
     "Contains information from SEC EDGAR Section 16 filings (Forms 3, 4 and 5). EDGAR "
@@ -630,7 +632,7 @@ def _stable(cik: str) -> str:
 
 def make_fixture(db: Path = CACHE / "edgar.duckdb", out: Path = FIXTURE, *,
                  groups: int = 15, renamed: int = 30, plain: int = 20) -> Path:  # fmt: skip
-    """A small hard slice of the staged data to ship for tests: whole shared-name groups
+    """A small hard slice of the staged data for tests: whole shared-name groups
     holding one person with two CIKs, whole groups holding a father and son at one issuer
     (conflicting suffixes, a shared issuer), other whole groups, renamed people, and a
     few plain ones. About 150 CIKs, with the fields of §7 only."""
@@ -683,23 +685,28 @@ def make_fixture(db: Path = CACHE / "edgar.duckdb", out: Path = FIXTURE, *,
 
 
 def fixture_db(path: Path, source: Path = FIXTURE) -> Path:
-    """A DuckDB file holding the shipped fixture as the staged tables."""
+    """A DuckDB file holding the fixture as the staged tables."""
     import duckdb
 
+    if not (source / "people.parquet").exists():
+        raise FileNotFoundError(
+            f"{source}: the EDGAR fixture is in the source repository (tests/data/edgar), "
+            "not the installed package"
+        )
     con = duckdb.connect(str(path))
     try:
         for table in TABLES[:-1]:
             con.execute(f"CREATE OR REPLACE TABLE {table} AS "
                         f"SELECT * FROM read_parquet('{source / (table + '.parquet')}')")  # fmt: skip
         con.execute("CREATE OR REPLACE TABLE meta (key VARCHAR, value VARCHAR)")
-        con.execute("INSERT INTO meta VALUES ('source_store', 'thisness/benchmark/data/edgar')")
+        con.execute("INSERT INTO meta VALUES ('source_store', 'tests/data/edgar')")
     finally:
         con.close()
     return path
 
 
 def from_fixture(n: int = 150, seed: int = 20261016, *, mode: str = "hidden") -> Benchmark:
-    """The EDGAR benchmark from the shipped fixture, for tests."""
+    """The EDGAR benchmark from the fixture, for tests."""
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmp:

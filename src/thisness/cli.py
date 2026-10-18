@@ -123,15 +123,13 @@ def cmd_resolve(args: argparse.Namespace, engine: Thisness | None = None) -> int
 
             adjudicator = Adjudicator(_client(args, engine), model=args.model, mode=role)
         result = engine.resolve_many(entity_type, plan=plan, adjudicator=adjudicator)
-        outcomes = {}
-        for o in result.outcomes.values():
-            outcomes[o.outcome] = outcomes.get(o.outcome, 0) + 1
-        summary = ", ".join(
-            f"{k.lower().replace('_', ' ')} {v}" for k, v in sorted(outcomes.items())
-        )
-        print(f"{entity_type}: {result.stats.get('scope', 0)} observations resolved"
-              + (f" ({summary})" if summary else "")
-              + f"; {len(result.reviews)} reviews opened")  # fmt: skip
+        # Outcomes are per observation (every record of a new cluster is CREATE_ENTITY),
+        # so report the entities the store now holds rather than a breakdown that reads
+        # as if nothing merged.
+        states = engine.store.entity_counts().get(entity_type, {})
+        live = sum(n for s, n in states.items() if s != "retired")
+        print(f"{entity_type}: {result.stats.get('scope', 0)} observations resolved; "
+              f"{live} entities in the store; {len(result.reviews)} reviews opened")  # fmt: skip
         if adjudicator is not None:
             stats = result.stats.get("adjudication", {})
             print(f"  model ({role}): {stats.get('answered', 0)} pairs answered, "
@@ -352,12 +350,30 @@ def _assistant(args: argparse.Namespace, engine: Thisness):
     return ReviewAssistant(_client(args, engine), model=args.model)
 
 
+# The model a run uses when --model is not given, by provider. gpt-6-luna is the model
+# every published measurement used; the Anthropic provider works but is not measured.
+DEFAULT_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-sonnet-5"}
+DEFAULT_GROUP_MODELS = {"openai": "gpt-6-luna", "anthropic": "claude-haiku-4-5"}
+
+
+def _default_models(args: argparse.Namespace) -> None:
+    """Fill in --model and --group-model from the run's provider (eval names it with
+    --adjudicator or --assistant), so the default always matches the provider."""
+    named = (getattr(args, k, None) for k in ("provider", "adjudicator", "assistant"))
+    provider = next((p for p in named if p in DEFAULT_MODELS), "openai")
+    if getattr(args, "model", "") is None:
+        args.model = DEFAULT_MODELS[provider]
+    if getattr(args, "group_model", "") is None:
+        args.group_model = DEFAULT_GROUP_MODELS[provider]
+
+
 def _model_options(parser: argparse.ArgumentParser, *, required: bool = False) -> None:
     g = parser.add_argument_group("model (design 05)")
-    g.add_argument("--provider", default="anthropic" if required else "none",
+    g.add_argument("--provider", default="openai" if required else "none",
                    choices=(["anthropic", "openai"] if required
                             else ["none", "anthropic", "openai"]))  # fmt: skip
-    g.add_argument("--model", default="claude-sonnet-5")
+    g.add_argument("--model", default=None,
+                   help="default gpt-6-luna (openai) or claude-sonnet-5 (anthropic)")  # fmt: skip
     g.add_argument("--budget", type=float, default=None, help="US dollars")
     g.add_argument("--base-url", default="https://api.openai.com/v1", help="for --provider openai")
     g.add_argument("--local", action="store_true", help="the openai-compatible server is yours")
@@ -566,7 +582,10 @@ def _eval_assistant(args: argparse.Namespace, engine, truth, bench) -> dict:
 
 
 def parser() -> argparse.ArgumentParser:
+    from thisness import __version__
+
     p = argparse.ArgumentParser(prog="thisness", description="Identity resolution with evidence.")
+    p.add_argument("--version", action="version", version=f"thisness {__version__}")
     p.add_argument("--store", default=os.environ.get("THISNESS_STORE", "identity.duckdb"),
                    help="DuckDB store file (default: $THISNESS_STORE or identity.duckdb)")  # fmt: skip
     sub = p.add_subparsers(dest="command", required=True)
@@ -582,7 +601,7 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--type", choices=sorted(PROFILES))
     s.add_argument("--plan", default="default", choices=["default", "name-only"],
                    help="name-only: group names with a model (design 05 §6)")  # fmt: skip
-    s.add_argument("--group-model", default="claude-haiku-4-5", help="for the grouping passes")
+    s.add_argument("--group-model", default=None, help="for the grouping passes")
     s.add_argument("--model-role", default="auto",
                    choices=["auto", "decide", "shadow", "suggest", "off"],
                    help="with --provider: what the model does; auto follows each profile "
@@ -660,7 +679,8 @@ def parser() -> argparse.ArgumentParser:
     g.add_argument("--adjudicator", default="none",
                    choices=["none", "oracle", "anthropic", "openai"])  # fmt: skip
     g.add_argument("--mode", default="shadow", choices=["shadow", "decide"])
-    g.add_argument("--model", default="claude-sonnet-5")
+    g.add_argument("--model", default=None,
+                   help="default gpt-6-luna (openai) or claude-sonnet-5 (anthropic)")  # fmt: skip
     g.add_argument("--budget", type=float, default=None, help="US dollars for the run")
     g.add_argument("--max-pairs", type=int, default=500)
     g.add_argument("--concurrency", type=int, default=4)
@@ -705,7 +725,7 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--plan", default="default", choices=["default", "name-only", "rewrite"],
                    help="name-only: group names with --adjudicator's model (or the oracle); "
                         "rewrite: the rewrite-and-hash baseline (design 05 §11.5)")  # fmt: skip
-    s.add_argument("--group-model", default="claude-haiku-4-5")
+    s.add_argument("--group-model", default=None)
     s.add_argument("--rewrite-order", default="as_built", choices=["as_built", "sorted"],
                    help="with --plan rewrite: later passes ordered by key hash, or by name")  # fmt: skip
     s.set_defaults(func=cmd_eval)
@@ -714,6 +734,7 @@ def parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parser().parse_args(argv)
+    _default_models(args)
     return args.func(args)
 
 

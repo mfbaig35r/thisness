@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1 (2026-10-18)
+
+- **The default model is gpt-6-luna**, the model behind every published measurement. `--model` and `--group-model` now follow the provider: gpt-6-luna for `openai`, `claude-sonnet-5` and `claude-haiku-4-5` for `anthropic`. Before, `--provider openai` without `--model` sent a Claude model name to OpenAI. `recommend` and `labels` default to `--provider openai`. `Adjudicator`, `ReviewAssistant`, `LabelAssistant` and `NameOnlyPlan` default to gpt-6-luna. The Anthropic provider is unchanged and not measured.
+- **The resolve summary counts entities.** `thisness resolve` and `thisness demo` report the entities the store holds ("628 observations resolved; 426 entities in the store; 84 reviews opened") instead of a per-record outcome breakdown that read as if nothing merged.
+- **`thisness --version`.**
+- **The EDGAR people fixture is out of the package.** It names real people, so it lives in the source repository's `tests/data/edgar`; `edgar.fixture_db` says where it is when it is missing.
+- **Docs.** The README compares Thisness with Splink, Dedupe, Zingg and Senzing. The research survey's broken citation markers are removed.
+
 ## 0.3.0 (2026-10-16)
 
 Real people (design 09).

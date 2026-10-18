@@ -1,8 +1,10 @@
 # General-Purpose Entity Resolution Engine for Graphs, Agents, and Enterprise Data
 
+> A landscape survey compiled with an AI research assistant in October 2026 and reviewed by hand. Its inline source citations did not survive export and have been removed; the named projects' own documentation is the place to check a claim.
+
 ## Foundations
 
-A modern entity-resolution system should not be designed as “a better fuzzy matcher.” The fundamental problem is **identity under imperfect observation**: heterogeneous records, document mentions, events, graph nodes, and external identifiers provide incomplete and sometimes contradictory observations of real-world entities, and the system must decide which observations belong to the same identity without erasing the evidence that led to that conclusion. This framing is consistent with the classic record-linkage literature, modern probabilistic systems, collective entity-resolution research, and current production ER platforms. The U.S. Census Bureau, for example, describes record linkage as matching or linking records among datasets and continues to maintain methodological work spanning probabilistic and machine-learning techniques; collective-ER research explicitly formalizes the problem as discovering latent underlying entities from references that may also be relationally connected. citeturn17search8turn19search7
+A modern entity-resolution system should not be designed as “a better fuzzy matcher.” The fundamental problem is **identity under imperfect observation**: heterogeneous records, document mentions, events, graph nodes, and external identifiers provide incomplete and sometimes contradictory observations of real-world entities, and the system must decide which observations belong to the same identity without erasing the evidence that led to that conclusion. This framing is consistent with the classic record-linkage literature, modern probabilistic systems, collective entity-resolution research, and current production ER platforms. The U.S. Census Bureau, for example, describes record linkage as matching or linking records among datasets and continues to maintain methodological work spanning probabilistic and machine-learning techniques; collective-ER research explicitly formalizes the problem as discovering latent underlying entities from references that may also be relationally connected.
 
 **The vocabulary matters because several neighboring tasks are routinely conflated.**
 
@@ -10,17 +12,17 @@ A modern entity-resolution system should not be designed as “a better fuzzy ma
 |---|---|---|
 | **Normalization** | Convert an observed representation into standardized forms: case-folding, Unicode normalization, punctuation removal, address parsing, phone normalization, legal-suffix handling. | Transforms representation; makes **no identity claim**. |
 | **Name matching / fuzzy matching** | Measure similarity between names or other strings. | Produces similarity evidence, not identity. |
-| **Record linkage** | Determine whether records, often from different datasets, refer to the same underlying entity. | Traditionally record-centric and often pairwise. The Python Record Linkage Toolkit itself separates indexing, comparison, classification, and evaluation. citeturn3search23turn17search20 |
+| **Record linkage** | Determine whether records, often from different datasets, refer to the same underlying entity. | Traditionally record-centric and often pairwise. The Python Record Linkage Toolkit itself separates indexing, comparison, classification, and evaluation. |
 | **Deduplication** | Find multiple representations of the same entity, usually within one logical dataset. | Same identity problem with a within-source scope. |
-| **Entity matching** | Usually the pairwise question “do A and B denote the same entity?” | Often used in ML research; Ditto, for example, casts matching as classification over pairs of serialized records. citeturn5search0turn5search8 |
-| **Probabilistic record linkage** | Estimate match evidence/probability from agreements and disagreements across fields. | Fellegi-Sunter is the foundational family; contemporary systems such as Splink operationalize this approach. citeturn20search1turn20search9turn1search0 |
+| **Entity matching** | Usually the pairwise question “do A and B denote the same entity?” | Often used in ML research; Ditto, for example, casts matching as classification over pairs of serialized records. |
+| **Probabilistic record linkage** | Estimate match evidence/probability from agreements and disagreements across fields. | Fellegi-Sunter is the foundational family; contemporary systems such as Splink operationalize this approach. |
 | **Clustering / entity resolution** | Partition many observations into sets believed to represent latent entities. | Pairwise predictions must be converted into globally coherent groups. |
 | **Canonicalization** | Choose or construct preferred attributes/labels for a resolved entity. | Comes **after or alongside identity resolution**; “canonical name” and “identity” are different questions. |
 | **Identity resolution** | Enterprise-oriented continuous resolution of fragmented identity evidence, commonly for people or organizations. | Usually emphasizes persistent identity across systems and time. |
-| **MDM** | Governance and lifecycle management around master entities, typically including matching plus survivorship, stewardship, synchronization, hierarchy, and data quality. | ER is a component of MDM, not equivalent to all of MDM. Microsoft Customer Insights, for example, exposes distinct Map, Match, Merge, ProfileStore and Relationship stages. citeturn16search2 |
+| **MDM** | Governance and lifecycle management around master entities, typically including matching plus survivorship, stewardship, synchronization, hierarchy, and data quality. | ER is a component of MDM, not equivalent to all of MDM. Microsoft Customer Insights, for example, exposes distinct Map, Match, Merge, ProfileStore and Relationship stages. |
 | **Coreference resolution** | Determine which mentions in discourse refer to the same discourse entity. | Context-heavy NLP problem, often document-scoped rather than enterprise identity. |
 | **Entity linking** | Link a mention to an already-defined external entity or knowledge-base ID. | The target universe is generally given; open-world ER must also decide that no existing entity fits. |
-| **Graph entity resolution** | Resolve identity using attributes plus graph structure/relationships. | Relational evidence can alter identity judgments collectively. citeturn19search7 |
+| **Graph entity resolution** | Resolve identity using attributes plus graph structure/relationships. | Relational evidence can alter identity judgments collectively. |
 | **Relationship resolution** | Determine how two *different* entities are related. | **Not identity resolution.** `subsidiary_of` must never accidentally become `same_entity`. |
 
 The cleanest conceptual decomposition is therefore:
@@ -55,7 +57,7 @@ A general-purpose engine must specifically distinguish the six operations in the
 
 **Temporal identity maintenance.** Evidence arriving tomorrow may support, contradict, merge, or split yesterday's assignments.
 
-This distinction is particularly important because collective entity resolution has long shown that relational information can improve disambiguation: two ambiguous references can become distinguishable from the entities around them. But collective ER also introduces dependencies among decisions, which makes unrestricted transitive inference dangerous. The classical work by Bhattacharya and Getoor explicitly treats ER as relational clustering in which attribute and neighborhood evidence interact. citeturn19search7
+This distinction is particularly important because collective entity resolution has long shown that relational information can improve disambiguation: two ambiguous references can become distinguishable from the entities around them. But collective ER also introduces dependencies among decisions, which makes unrestricted transitive inference dangerous. The classical work by Bhattacharya and Getoor explicitly treats ER as relational clustering in which attribute and neighborhood evidence interact.
 
 **The methodological landscape supports a layered rather than single-model design.**
 
@@ -66,21 +68,21 @@ This distinction is particularly important because collective entity resolution 
 | Edit/Jaro/Jaro-Winkler/character similarity | Typographical corruption, OCR, short names | Cheap, transparent | Similar strings need not be identical entities; poor semantic/contextual understanding | No labels; strong auditability |
 | Token/Jaccard/TF-IDF/sparse similarity | Company/product names and multi-token fields | Handles token reordering and common-word weighting | Weak on aliases with different vocabularies; field-specific tuning required | No labels; strong auditability |
 | Phonetic matching | Person names and transliterations in appropriate languages | Finds spelling variants based on pronunciation | Language-dependent and collision-prone | No labels; strong auditability |
-| Fellegi-Sunter probabilistic linkage | Structured multi-field records | Interpretable evidence weighting; excellent baseline where labels are limited | Independence assumptions are imperfect; calibration depends on candidate population/model assumptions | Can be unsupervised/weakly supervised; very auditable. Splink operationalizes this family at scale. citeturn20search9turn1search0 |
+| Fellegi-Sunter probabilistic linkage | Structured multi-field records | Interpretable evidence weighting; excellent baseline where labels are limited | Independence assumptions are imperfect; calibration depends on candidate population/model assumptions | Can be unsupervised/weakly supervised; very auditable. Splink operationalizes this family at scale. |
 | Logistic regression / gradient boosting / traditional ML | Structured heterogeneous features | Strong accuracy with engineered evidence; inexpensive inference | Requires representative labels; scores can drift; feature interactions can obscure explanations | Good production choice if calibrated and versioned |
-| Active-learning classifiers | Domains where labels are expensive | Focuses human labeling on informative cases | Labeling bias and changing distributions must be managed | Dedupe explicitly uses ML for structured ER and is associated with interactive training workflows. citeturn3search24turn3search0 |
+| Active-learning classifiers | Domains where labels are expensive | Focuses human labeling on informative cases | Labeling bias and changing distributions must be managed | Dedupe explicitly uses ML for structured ER and is associated with interactive training workflows. |
 | Siamese / contrastive neural models | Learned representations and retrieval | Can learn domain-specific similarity and scale candidate retrieval | Similarity objective does not automatically equal identity; training data matters heavily | Moderate explainability |
-| Transformer pair models | Rich records with textual fields | Strong contextual comparison; minimal manual feature engineering | Expensive relative to classical methods; labeled-data/domain-shift issues | Ditto showed large gains across standard entity-matching benchmarks using pretrained Transformers. citeturn5search0 |
+| Transformer pair models | Rich records with textual fields | Strong contextual comparison; minimal manual feature engineering | Expensive relative to classical methods; labeled-data/domain-shift issues | Ditto showed large gains across standard entity-matching benchmarks using pretrained Transformers. |
 | Dense embeddings | Candidate retrieval, multilingual/noisy descriptions | Efficient ANN retrieval; captures semantic variation | Semantic relatedness is **not identity**; false positives among related brands/subsidiaries/categories | Excellent candidate layer, weak standalone truth layer |
-| Graph/collective ER | Bibliographic, fraud, organizational, social, supply-chain contexts | Relationship structure can disambiguate sparse attributes | Feedback loops and erroneous propagation can amplify initial mistakes | Powerful but must preserve provenance and constrain propagation. citeturn19search7 |
+| Graph/collective ER | Bibliographic, fraud, organizational, social, supply-chain contexts | Relationship structure can disambiguate sparse attributes | Feedback loops and erroneous propagation can amplify initial mistakes | Powerful but must preserve provenance and constrain propagation. |
 | LLM-assisted comparison | Ambiguous context, unstructured descriptions, organizational relationships | Can reason over heterogeneous evidence and interpret context | Hallucination, nondeterminism, privacy, cost, model drift | Useful adjudicator/extractor if constrained; poor autonomous source of truth |
 | Human review | High-risk and ambiguous cases | Handles domain nuance and provides labels | Expensive and variable | Essential architectural component rather than an exceptional fallback |
 
-The classical Fellegi-Sunter idea remains more architecturally important than its age suggests. Instead of collapsing every field into a generic fuzzy score, it treats agreements and disagreements as evidence with different information value. Splink exposes this logic explicitly through field comparison levels and match weights. citeturn20search9turn20search32 This is exactly the right intellectual direction for a new engine: **a rare tax-ID agreement and a common-name agreement must not be treated as interchangeable “90% similarities.”**
+The classical Fellegi-Sunter idea remains more architecturally important than its age suggests. Instead of collapsing every field into a generic fuzzy score, it treats agreements and disagreements as evidence with different information value. Splink exposes this logic explicitly through field comparison levels and match weights. This is exactly the right intellectual direction for a new engine: **a rare tax-ID agreement and a common-name agreement must not be treated as interchangeable “90% similarities.”**
 
-Neural approaches do not invalidate that principle. Ditto demonstrated that pretrained Transformers can perform very strong pairwise entity matching by serializing structured records into text and fine-tuning sequence classifiers, reporting substantial gains over then-existing methods across its benchmark suite. citeturn5search0turn5search4 The lesson is not “replace evidence with Transformers”; it is that a `Resolver` can legitimately be a learned model while the surrounding system retains candidate provenance, typed evidence, decision history, and reversible identity state.
+Neural approaches do not invalidate that principle. Ditto demonstrated that pretrained Transformers can perform very strong pairwise entity matching by serializing structured records into text and fine-tuning sequence classifiers, reporting substantial gains over then-existing methods across its benchmark suite. The lesson is not “replace evidence with Transformers”; it is that a `Resolver` can legitimately be a learned model while the surrounding system retains candidate provenance, typed evidence, decision history, and reversible identity state.
 
-Recent LLM work pushes farther. LLM-CER investigates resolving records at the cluster level rather than merely issuing pairwise calls, reporting higher F-measure in parts of its evaluation and fewer API calls while explicitly encountering issues such as cluster merging and hallucination. citeturn5search3turn5search15 DistillER studies using LLMs as teachers and distilling their judgments into cheaper models, showing one plausible way that expensive language-model reasoning can help bootstrap a domain matcher without making the online system permanently dependent on a frontier model. citeturn5academia35 These results support a **model-assisted, model-independent architecture**.
+Recent LLM work pushes farther. LLM-CER investigates resolving records at the cluster level rather than merely issuing pairwise calls, reporting higher F-measure in parts of its evaluation and fewer API calls while explicitly encountering issues such as cluster merging and hallucination. DistillER studies using LLMs as teachers and distilling their judgments into cheaper models, showing one plausible way that expensive language-model reasoning can help bootstrap a domain matcher without making the online system permanently dependent on a frontier model. These results support a **model-assisted, model-independent architecture**.
 
 Your existing workflow—
 
@@ -92,31 +94,31 @@ Your existing workflow—
 
 The strongest existing tools tend to optimize one portion of the problem rather than solve the entire persistent-identity lifecycle.
 
-**Splink is the best architectural reference for probabilistic, SQL-native linkage.** It is explicitly a probabilistic record-linkage/entity-resolution library designed for deduplication and linkage where unique identifiers are unavailable. Its documentation exposes Fellegi-Sunter concepts, term-frequency adjustments, deterministic and probabilistic linkage, blocking, and graph-oriented interpretation of linked results. citeturn1search0turn1search28 The idea worth borrowing is not Splink's exact API but the transparency of **comparison levels → evidence weights → pair scores**, together with database-executed blocking and comparison. Splink is less naturally a persistent domain-object/ledger framework for arbitrary graph and agent workflows; the new library should therefore treat probabilistic linkage as a resolver backend rather than make Fellegi-Sunter its entire ontology.
+**Splink is the best architectural reference for probabilistic, SQL-native linkage.** It is explicitly a probabilistic record-linkage/entity-resolution library designed for deduplication and linkage where unique identifiers are unavailable. Its documentation exposes Fellegi-Sunter concepts, term-frequency adjustments, deterministic and probabilistic linkage, blocking, and graph-oriented interpretation of linked results. The idea worth borrowing is not Splink's exact API but the transparency of **comparison levels → evidence weights → pair scores**, together with database-executed blocking and comparison. Splink is less naturally a persistent domain-object/ledger framework for arbitrary graph and agent workflows; the new library should therefore treat probabilistic linkage as a resolver backend rather than make Fellegi-Sunter its entire ontology.
 
-**Dedupe is a strong reference for interactive learning.** Its official documentation describes machine-learning-based deduplication and ER over structured data, including names and addresses and linking records across datasets. citeturn3search24 The most reusable idea is that human labeling can train the matcher rather than merely correct the output. The new architecture should generalize this into a first-class `ReviewDecision → TrainingExample` path.
+**Dedupe is a strong reference for interactive learning.** Its official documentation describes machine-learning-based deduplication and ER over structured data, including names and addresses and linking records across datasets. The most reusable idea is that human labeling can train the matcher rather than merely correct the output. The new architecture should generalize this into a first-class `ReviewDecision → TrainingExample` path.
 
-**Zingg contributes scalability and incremental concepts.** Its project exposes Spark-based entity resolution, configurable matching types, blocking strategies, deterministic rules, and incremental operation. citeturn3search9 What to borrow is the notion that entity resolution is a pipeline that must support both bulk and incremental modes under one conceptual model; what not to inherit is a mandatory distributed-compute footprint for local users.
+**Zingg contributes scalability and incremental concepts.** Its project exposes Spark-based entity resolution, configurable matching types, blocking strategies, deterministic rules, and incremental operation. What to borrow is the notion that entity resolution is a pipeline that must support both bulk and incremental modes under one conceptual model; what not to inherit is a mandatory distributed-compute footprint for local users.
 
-**The Python Record Linkage Toolkit is an excellent decomposition reference.** It explicitly separates preprocessing, indexing, comparison, classification and evaluation, but its own repository characterizes it as intended primarily for research and small/medium files. citeturn3search23turn17search20 Its pipeline separation should survive into the new library, while persistence, evidence provenance, type plugins, review, incremental identity and graph integration should go substantially farther.
+**The Python Record Linkage Toolkit is an excellent decomposition reference.** It explicitly separates preprocessing, indexing, comparison, classification and evaluation, but its own repository characterizes it as intended primarily for research and small/medium files. Its pipeline separation should survive into the new library, while persistence, evidence provenance, type plugins, review, incremental identity and graph integration should go substantially farther.
 
-**Transformer systems such as Ditto show what a learned resolver can look like without becoming the system architecture.** Ditto converts record pairs into sequences and fine-tunes pretrained language models, with optional domain knowledge, summarization, and augmentation. citeturn5search0turn5search8 A modern engine should be able to plug in such a resolver while preserving the exact record pair, model identifier, serialization/version, returned score and ultimate policy decision.
+**Transformer systems such as Ditto show what a learned resolver can look like without becoming the system architecture.** Ditto converts record pairs into sequences and fine-tunes pretrained language models, with optional domain knowledge, summarization, and augmentation. A modern engine should be able to plug in such a resolver while preserving the exact record pair, model identifier, serialization/version, returned score and ultimate policy decision.
 
-**AWS Entity Resolution illustrates a production separation between workflow, matching technique and output identity.** AWS supports rule-based, ML-based and provider-service-based workflows and assigns matched groups `MatchID`s. Its rule workflows can expose which rule generated a match, and its ML mode emits group-level—and in incremental ML operation, record-level—confidence values. AWS also supports batch/incremental workflows and certain hashed-data workflows. citeturn15search9turn15search16turn15search23turn15search30 The reusable ideas are typed matcher strategies, generated identity groups, incremental processing and explicit match provenance. The opportunity for an open-source system is substantially deeper evidence inspection, pluggable algorithms, reversible identity history and deployment independence.
+**AWS Entity Resolution illustrates a production separation between workflow, matching technique and output identity.** AWS supports rule-based, ML-based and provider-service-based workflows and assigns matched groups `MatchID`s. Its rule workflows can expose which rule generated a match, and its ML mode emits group-level—and in incremental ML operation, record-level—confidence values. AWS also supports batch/incremental workflows and certain hashed-data workflows. The reusable ideas are typed matcher strategies, generated identity groups, incremental processing and explicit match provenance. The opportunity for an open-source system is substantially deeper evidence inspection, pluggable algorithms, reversible identity history and deployment independence.
 
-**Microsoft Customer Insights makes another useful pipeline distinction.** Its published workflow diagnostics list ingestion, preparation, mapping, matching, merging, profile storage and relationship processing as separate operations. citeturn16search2 This reinforces the proposed architectural rule that **matching is not merging** and that relationships are not equivalent to identity.
+**Microsoft Customer Insights makes another useful pipeline distinction.** Its published workflow diagnostics list ingestion, preparation, mapping, matching, merging, profile storage and relationship processing as separate operations. This reinforces the proposed architectural rule that **matching is not merging** and that relationships are not equivalent to identity.
 
-**Tamr is useful as an MDM-style comparator because its public materials explicitly combine ML clustering, human feedback, consolidation into a golden record and real-time matching.** Its documentation describes a clustering approach involving machine learning and linkage as well as curator feedback, while its domain configuration covers schema, cleaning/enrichment, clustering and golden-record consolidation rules. citeturn12search22turn12search27 The lesson is to make canonicalization/survivorship a separate layer from identity. Reltio, Informatica, Semarchy and Ataccama belong to the broader MDM comparator set; for an open-source ER substrate, their most relevant conceptual category is source-to-master governance, not a need to reproduce full MDM workflow, UI, stewardship and synchronization machinery.
+**Tamr is useful as an MDM-style comparator because its public materials explicitly combine ML clustering, human feedback, consolidation into a golden record and real-time matching.** Its documentation describes a clustering approach involving machine learning and linkage as well as curator feedback, while its domain configuration covers schema, cleaning/enrichment, clustering and golden-record consolidation rules. The lesson is to make canonicalization/survivorship a separate layer from identity. Reltio, Informatica, Semarchy and Ataccama belong to the broader MDM comparator set; for an open-source ER substrate, their most relevant conceptual category is source-to-master governance, not a need to reproduce full MDM workflow, UI, stewardship and synchronization machinery.
 
-**Senzing emphasizes a somewhat different pattern: persistent identity and relationships rather than a batch-only merge job.** Its current public description emphasizes real-time identity resolution, relationship awareness and explanations, although these claims should be treated as vendor descriptions rather than independent algorithmic evidence. citeturn22search0 Architecturally, this supports the idea of ER as a continuously maintained identity service rather than a one-shot dataframe transformation.
+**Senzing emphasizes a somewhat different pattern: persistent identity and relationships rather than a batch-only merge job.** Its current public description emphasizes real-time identity resolution, relationship awareness and explanations, although these claims should be treated as vendor descriptions rather than independent algorithmic evidence. Architecturally, this supports the idea of ER as a continuously maintained identity service rather than a one-shot dataframe transformation.
 
-**Quantexa likewise frames ER as the conversion of disparate records into distinct entities and places significant weight on contextual/connected-data use cases.** Again, this is a vendor characterization rather than an open algorithm specification. citeturn22search31 The transferable idea is that graph context belongs in the evidence space; the engine should not, however, require the entire investigation/decision platform around it.
+**Quantexa likewise frames ER as the conversion of disparate records into distinct entities and places significant weight on contextual/connected-data use cases.** Again, this is a vendor characterization rather than an open algorithm specification. The transferable idea is that graph context belongs in the evidence space; the engine should not, however, require the entire investigation/decision platform around it.
 
-**Elasticsearch/OpenSearch-style search infrastructure belongs primarily in candidate generation.** Elasticsearch's text-analysis machinery exists to retrieve relevant full-text matches rather than only exact strings, which is exactly what candidate search needs. citeturn18search13 Fuzzy lexical indexes, n-grams, phonetic analyzers and vector ANN can cheaply narrow millions of possible entities to tens of plausible ones. They should not own canonical identity.
+**Elasticsearch/OpenSearch-style search infrastructure belongs primarily in candidate generation.** Elasticsearch's text-analysis machinery exists to retrieve relevant full-text matches rather than only exact strings, which is exactly what candidate search needs. Fuzzy lexical indexes, n-grams, phonetic analyzers and vector ANN can cheaply narrow millions of possible entities to tens of plausible ones. They should not own canonical identity.
 
-**Neo4j and graph databases are similarly better treated as graph substrates than as the sole resolution engine.** Neo4j's public ER material emphasizes using relationships and contextual information in addition to attributes. citeturn17search19turn22search12 Graph algorithms are highly useful for connected components, relational evidence and cluster inspection, but identity policy should live above the graph so a dubious similarity edge does not automatically become irreversible node collapse.
+**Neo4j and graph databases are similarly better treated as graph substrates than as the sole resolution engine.** Neo4j's public ER material emphasizes using relationships and contextual information in addition to attributes. Graph algorithms are highly useful for connected components, relational evidence and cluster inspection, but identity policy should live above the graph so a dubious similarity edge does not automatically become irreversible node collapse.
 
-**Databricks, Snowflake and Google Cloud are most useful as execution environments or sources of similarity primitives when a dedicated ER layer is absent.** Google BigQuery, for example, exposes embedding similarity primitives, but similarity computation is not itself an identity-management architecture. citeturn3search22 Warehouse-native SQL is nevertheless attractive for blocking, feature computation and large pairwise joins. A portable engine should be able to compile portions of its candidate/evidence workload to SQL without tying the domain model to one warehouse.
+**Databricks, Snowflake and Google Cloud are most useful as execution environments or sources of similarity primitives when a dedicated ER layer is absent.** Google BigQuery, for example, exposes embedding similarity primitives, but similarity computation is not itself an identity-management architecture. Warehouse-native SQL is nevertheless attractive for blocking, feature computation and large pairwise joins. A portable engine should be able to compile portions of its candidate/evidence workload to SQL without tying the domain model to one warehouse.
 
 The biggest architectural gap across this landscape is not another string matcher. It is an open, persistent layer combining:
 
@@ -126,19 +128,19 @@ The biggest architectural gap across this landscape is not another string matche
 
 Palantir requires unusually careful treatment because its publicly visible architecture is broader than entity resolution itself and much of the ER implementation is not documented at an algorithmic level.
 
-**Documented behavior:** Palantir describes its Ontology as an operational/semantic layer sitting over integrated digital assets such as datasets, tables and models, mapping them to real-world objects, properties and links. It combines semantic objects/properties/links with operational elements such as actions and functions. citeturn8view1 That is strong evidence for a logical separation between **source/integrated data** and **semantic real-world objects**, although it is not proof that Palantir stores ER observations in precisely the data model proposed here.
+**Documented behavior:** Palantir describes its Ontology as an operational/semantic layer sitting over integrated digital assets such as datasets, tables and models, mapping them to real-world objects, properties and links. It combines semantic objects/properties/links with operational elements such as actions and functions. That is strong evidence for a logical separation between **source/integrated data** and **semantic real-world objects**, although it is not proof that Palantir stores ER observations in precisely the data model proposed here.
 
-**Documented behavior:** Ontology objects have object-type identity and primary keys, and Palantir APIs expose object primary keys and object RIDs. citeturn6search9turn6search16 This is an important pattern: semantic objects need stable identifiers that are not merely display names.
+**Documented behavior:** Ontology objects have object-type identity and primary keys, and Palantir APIs expose object primary keys and object RIDs. This is an important pattern: semantic objects need stable identifiers that are not merely display names.
 
-**Documented behavior:** Palantir supports object types backed by multiple data sources, with mappings around object primary keys; its documentation distinguishes column-wise multi-datasource composition and other datasource patterns. citeturn9view0 This demonstrates that a single semantic object can be assembled from multiple physical sources once identity/keying is established. It should **not** be interpreted as proof that the multi-datasource mapping itself performs probabilistic entity resolution.
+**Documented behavior:** Palantir supports object types backed by multiple data sources, with mappings around object primary keys; its documentation distinguishes column-wise multi-datasource composition and other datasource patterns. This demonstrates that a single semantic object can be assembled from multiple physical sources once identity/keying is established. It should **not** be interpreted as proof that the multi-datasource mapping itself performs probabilistic entity resolution.
 
-**Documented behavior:** Palantir separately models links between objects. Foreign-key-backed and object-backed links represent relationships among semantic objects. citeturn10view3 This supports the principle that ontology relationships are first-class and distinct from object identity.
+**Documented behavior:** Palantir separately models links between objects. Foreign-key-backed and object-backed links represent relationships among semantic objects. This supports the principle that ontology relationships are first-class and distinct from object identity.
 
-**Documented behavior:** Palantir also maintains detailed edit history and an action log. The action log can capture who made a decision, when it occurred, the action version and affected object primary keys, while edit history captures object changes; action logs can be linked to edited objects. citeturn10view0turn10view1 Action reversion exists for supported actions, subject to important limitations such as subsequent edits and non-revertible side effects. citeturn10view2 These are highly relevant analogues for a resolution ledger even though they are not documentation of Palantir's internal ER ledger.
+**Documented behavior:** Palantir also maintains detailed edit history and an action log. The action log can capture who made a decision, when it occurred, the action version and affected object primary keys, while edit history captures object changes; action logs can be linked to edited objects. Action reversion exists for supported actions, subject to important limitations such as subsequent edits and non-revertible side effects. These are highly relevant analogues for a resolution ledger even though they are not documentation of Palantir's internal ER ledger.
 
-**Documented behavior:** Palantir publicly markets Foundry Entity Resolution as a capability to link records into a reliable deduplicated foundation. citeturn22search1 Public documentation available in this research does **not** specify enough internal detail to establish the exact probabilistic models, cluster algorithms, confidence representation, raw-record lifecycle, or generic merge/unmerge implementation.
+**Documented behavior:** Palantir publicly markets Foundry Entity Resolution as a capability to link records into a reliable deduplicated foundation. Public documentation available in this research does **not** specify enough internal detail to establish the exact probabilistic models, cluster algorithms, confidence representation, raw-record lifecycle, or generic merge/unmerge implementation.
 
-**Reasonable architectural inference:** Foundry's separation of integrated source assets from Ontology objects, combined with stable object identities and provenance/history mechanisms, strongly suggests a design philosophy in which semantic entities are not merely destructive rewrites of source rows. citeturn8view1turn10view0turn10view1 This is an inference about architectural philosophy, not evidence of an undocumented internal schema.
+**Reasonable architectural inference:** Foundry's separation of integrated source assets from Ontology objects, combined with stable object identities and provenance/history mechanisms, strongly suggests a design philosophy in which semantic entities are not merely destructive rewrites of source rows. This is an inference about architectural philosophy, not evidence of an undocumented internal schema.
 
 **Speculation that should be avoided:** It would be unjustified to assert from public sources that Palantir internally implements the exact `Observation → ResolutionAssertion → Entity` model proposed here, that every raw ER observation is immutable forever, or that arbitrary ER merges can always be unmerged. The public sources examined do not establish those facts.
 
@@ -162,13 +164,13 @@ That answers the most important Palantir question: **yes, raw observations shoul
 
 The fourteen hypotheses in the prompt are mostly correct, but several need tightening.
 
-**Raw observations should never disappear — accept, with a privacy qualification.** An accepted match must not replace its source observation. Otherwise a later split becomes forensic reconstruction. Treat corrections as new observation versions or superseding source events rather than silently modifying the historical record. This mirrors the broader lineage principle visible in Palantir's separation of ontology objects from backing data and its explicit edit/action history. citeturn8view1turn10view0turn10view1 Physical retention remains policy-controlled.
+**Raw observations should never disappear — accept, with a privacy qualification.** An accepted match must not replace its source observation. Otherwise a later split becomes forensic reconstruction. Treat corrections as new observation versions or superseding source events rather than silently modifying the historical record. This mirrors the broader lineage principle visible in Palantir's separation of ontology objects from backing data and its explicit edit/action history. Physical retention remains policy-controlled.
 
-**Canonical entities should have stable IDs independent of source names — strongly accept.** Palantir's object model likewise separates primary identity from display properties. citeturn6search9turn6search16 Names, addresses, supplier codes and domains change; the library's entity ID should not.
+**Canonical entities should have stable IDs independent of source names — strongly accept.** Palantir's object model likewise separates primary identity from display properties. Names, addresses, supplier codes and domains change; the library's entity ID should not.
 
-**Entity resolution should generate explicit evidence — strongly accept.** Splink demonstrates the value of decomposing a match into comparison levels and weights; AWS rule workflows similarly retain the rule responsible for a matched group. citeturn20search9turn15search16 A score without its inputs is inadequate for an audit-grade system.
+**Entity resolution should generate explicit evidence — strongly accept.** Splink demonstrates the value of decomposing a match into comparison levels and weights; AWS rule workflows similarly retain the rule responsible for a matched group. A score without its inputs is inadequate for an audit-grade system.
 
-**Candidate generation and final decisioning should be separate — make this fundamental.** The Record Linkage Toolkit already separates indexing from comparison/classification, while production systems employ blocking/search precisely because an all-pairs comparison is quadratic. citeturn3search23turn20search17 Candidate recall and decision precision are separate optimization problems and should have separate APIs and metrics.
+**Candidate generation and final decisioning should be separate — make this fundamental.** The Record Linkage Toolkit already separates indexing from comparison/classification, while production systems employ blocking/search precisely because an all-pairs comparison is quadratic. Candidate recall and decision precision are separate optimization problems and should have separate APIs and metrics.
 
 **Embeddings are primarily candidate-generation tools, not truth engines — accept with one nuance.** An embedding similarity may legitimately become **one evidence feature** inside a calibrated domain-specific decision model. It should rarely be a sufficient identity rule on its own.
 
@@ -180,7 +182,7 @@ The dangerous distinction is:
 
 “Apple,” “Apple Records,” “Apple Bank” and “Apple Inc.” can occupy related semantic neighborhoods while denoting separate organizations. The same applies to parent/subsidiary entities, adjacent product models and two people with very similar biographies. Embeddings are especially valuable when candidate retrieval must bridge multilingual labels, lexical variation, descriptions or aliases that exact indexes miss. They are less trustworthy for short proper names whose main task is discrimination rather than semantic meaning.
 
-**LLMs should adjudicate ambiguous evidence under constraints rather than issue unconstrained merges — strongly accept.** Recent LLM-ER research shows real promise but also explicitly encounters cluster-merging and hallucination problems, while distillation research suggests LLM knowledge can sometimes be transferred into smaller repeatable models. citeturn5search3turn5academia35 The right interface is therefore not:
+**LLMs should adjudicate ambiguous evidence under constraints rather than issue unconstrained merges — strongly accept.** Recent LLM-ER research shows real promise but also explicitly encounters cluster-merging and hallucination problems, while distillation research suggests LLM knowledge can sometimes be transferred into smaller repeatable models. The right interface is therefore not:
 
 ```text
 "Are these the same company? Explain."
@@ -207,21 +209,21 @@ Return:
 
 An LLM-generated paragraph can be saved as an auxiliary explanation, but the **decision must cite machine-readable evidence**.
 
-**Human review is part of the architecture — strongly accept.** The decisive insight from active-learning systems such as Dedupe is that reviewer effort can simultaneously resolve difficult cases and generate training information. citeturn3search24 Review should be triggered not only by “confidence around 0.5” but also by risk: a proposed merge joining two large entities, a bridge between previously distinct graph communities, conflicting authoritative identifiers, or an identity decision with large downstream blast radius may deserve review even at a superficially high score.
+**Human review is part of the architecture — strongly accept.** The decisive insight from active-learning systems such as Dedupe is that reviewer effort can simultaneously resolve difficult cases and generate training information. Review should be triggered not only by “confidence around 0.5” but also by risk: a proposed merge joining two large entities, a bridge between previously distinct graph communities, conflicting authoritative identifiers, or an identity decision with large downstream blast radius may deserve review even at a superficially high score.
 
 **Resolution decisions should be versioned and auditable — strongly accept.** This should extend beyond `resolver_version`. Evidence extraction, normalization, blocking configuration, type schema, model parameters, prompt template and policy version can all change a result.
 
-**Identity and relationship should not be conflated — make this a hard invariant.** Collective resolution benefits from relationship evidence, but relational similarity is not itself identity. citeturn19search7 `same_entity`, `subsidiary_of`, `division_of`, `brand_of`, `operated_by`, `located_at`, `formerly_known_as`, `successor_to` and `related_to` need distinct semantics.
+**Identity and relationship should not be conflated — make this a hard invariant.** Collective resolution benefits from relationship evidence, but relational similarity is not itself identity. `same_entity`, `subsidiary_of`, `division_of`, `brand_of`, `operated_by`, `located_at`, `formerly_known_as`, `successor_to` and `related_to` need distinct semantics.
 
 **The system must support merging and unmerging — accept, but do not implement merge as destructive union.** An “unmerge” becomes easy only when underlying observations were never destroyed. Prefer membership changes and entity lineage events over physical data collapse.
 
 **Previously resolved identity should form reusable resolution memory — accept conditionally.** Resolution memory should accelerate future candidate retrieval and obvious decisions, but every memory entry must carry provenance, scope, validity and revocation state. A learned alias should not become an eternal deterministic truth merely because one analyst approved it in one context.
 
-**The core engine should be model-agnostic — strongly accept.** Classical probabilistic models remain strong; Transformers offer powerful pairwise matching; LLMs add contextual reasoning; rules dominate when authoritative identifiers exist. citeturn1search0turn5search0turn5search3 The architecture should allow all of them simultaneously.
+**The core engine should be model-agnostic — strongly accept.** Classical probabilistic models remain strong; Transformers offer powerful pairwise matching; LLMs add contextual reasoning; rules dominate when authoritative identifiers exist. The architecture should allow all of them simultaneously.
 
 **Entity-type-specific behavior should be extensible — strongly accept.** There is no meaningful universal similarity function over a person, physical facility and manufactured product. What is universal is the *protocol*: candidate retrieval, evidence production, constraints, decision, ledger and review.
 
-**Local-first but enterprise-scalable — strongly accept.** Splink and Record Linkage Toolkit demonstrate the value of accessible Python/SQL workflows, while Spark-oriented Zingg and managed AWS ER demonstrate the need to scale farther. citeturn1search0turn17search20turn3search9turn15search9 The package should not make distributed infrastructure part of the core abstraction.
+**Local-first but enterprise-scalable — strongly accept.** Splink and Record Linkage Toolkit demonstrate the value of accessible Python/SQL workflows, while Spark-oriented Zingg and managed AWS ER demonstrate the need to scale farther. The package should not make distributed infrastructure part of the core abstraction.
 
 ### Evidence should be data, not prose
 
@@ -259,7 +261,7 @@ First, **positive and negative evidence must be equally expressible**. A shared 
 
 Second, **retrieval scores must not masquerade as identity probabilities**. Elasticsearch relevance, cosine similarity, graph proximity and an LLM's self-reported confidence are different quantities. The evidence model should retain the score's type and semantics.
 
-Splink's explicit comparison-level weighting is a useful precedent for decomposed evidence rather than opaque whole-record similarity. citeturn20search9 AWS's distinction between rule identifiers and ML confidence similarly illustrates that different decision mechanisms expose different evidence semantics. citeturn15search16turn15search23
+Splink's explicit comparison-level weighting is a useful precedent for decomposed evidence rather than opaque whole-record similarity. AWS's distinction between rule identifiers and ML confidence similarly illustrates that different decision mechanisms expose different evidence semantics.
 
 ### Identity should be constrained reasoning, not binary similarity
 
@@ -339,7 +341,7 @@ Score(
 )
 ```
 
-AWS's own rule and ML modes illustrate why this distinction is natural: rule-based results carry matching-rule provenance, while ML matching produces confidence values. citeturn15search16turn15search23
+AWS's own rule and ML modes illustrate why this distinction is natural: rule-based results carry matching-rule provenance, while ML matching produces confidence values.
 
 Where probabilities are advertised as probabilities, calibration should be evaluated. Where models merely emit ranking scores, the system should say so. Conflicting evidence should remain visible rather than disappearing into an average.
 
@@ -510,7 +512,7 @@ Observation
        top-K candidates
 ```
 
-The indexing/comparison separation is well established in record-linkage tooling. citeturn3search23 In practical large-scale linkage, blocking exists because comparing every record with every other record becomes infeasible, and modern Fellegi-Sunter workflows similarly rely on blocking before scoring. citeturn20search17
+The indexing/comparison separation is well established in record-linkage tooling. In practical large-scale linkage, blocking exists because comparing every record with every other record becomes infeasible, and modern Fellegi-Sunter workflows similarly rely on blocking before scoring.
 
 A candidate generator protocol should therefore expose **recall-oriented retrieval**, not identity:
 
@@ -657,7 +659,7 @@ An LLM belongs in four places.
 
 **Review assistance:** summarize why a cluster looks coherent or identify anomalous cluster members.
 
-Recent work supports both pairwise and cluster-level LLM ER while also exposing hallucination and cluster-merging risks. citeturn5search3turn5search15 Distillation results further suggest that an LLM may be valuable as an offline teacher rather than a permanent online dependency. citeturn5academia35
+Recent work supports both pairwise and cluster-level LLM ER while also exposing hallucination and cluster-merging risks. Distillation results further suggest that an LLM may be valuable as an offline teacher rather than a permanent online dependency.
 
 LLMs should **not** directly:
 
@@ -697,7 +699,7 @@ There should be three different semantics:
 
 **Ordinary domain relationship.** Two distinct entities are related.
 
-Do **not** treat all pairwise matches above threshold as `same_as` edges and then take unrestricted connected components. Pairwise similarity is not mathematically guaranteed to be transitive, and one bad bridge can join two otherwise clean clusters. Collective ER research shows relational evidence can improve resolution, but also makes decisions mutually dependent. citeturn19search7
+Do **not** treat all pairwise matches above threshold as `same_as` edges and then take unrestricted connected components. Pairwise similarity is not mathematically guaranteed to be transitive, and one bad bridge can join two otherwise clean clusters. Collective ER research shows relational evidence can improve resolution, but also makes decisions mutually dependent.
 
 For the IBM example, graph data should permit:
 
@@ -793,7 +795,7 @@ LedgerEvent(
 
 A reviewer reversal should append another event; it should not erase the first.
 
-Current state—entity membership, aliases, canonical snapshots, redirects—can then be materialized for fast queries. This closely parallels the broader separation Palantir documents between object state/edit history and action logs that preserve decision context. citeturn10view0turn10view1
+Current state—entity membership, aliases, canonical snapshots, redirects—can then be materialized for fast queries. This closely parallels the broader separation Palantir documents between object state/edit history and action logs that preserve decision context.
 
 The ledger provides:
 
@@ -867,9 +869,9 @@ Production:
     optional graph DB sink/adapter
 ```
 
-Parquet is an open column-oriented storage format designed for efficient storage and analytical retrieval and is an appropriate interchange/archive layer for bulk observations and generated feature sets. citeturn21search1turn21search37
+Parquet is an open column-oriented storage format designed for efficient storage and analytical retrieval and is an appropriate interchange/archive layer for bulk observations and generated feature sets.
 
-DuckDB is particularly attractive conceptually for the local/batch profile because ER spends significant time on analytical scans, blocking joins, group statistics and feature materialization. Splink's SQL-oriented approach illustrates how much of probabilistic linkage can be profitably pushed into a relational execution engine. citeturn1search0 PostgreSQL should be the default production persistence target where concurrent service workloads, transactions, durable ledger writes and operational indexes matter.
+DuckDB is particularly attractive conceptually for the local/batch profile because ER spends significant time on analytical scans, blocking joins, group statistics and feature materialization. Splink's SQL-oriented approach illustrates how much of probabilistic linkage can be profitably pushed into a relational execution engine. PostgreSQL should be the default production persistence target where concurrent service workloads, transactions, durable ledger writes and operational indexes matter.
 
 SQLite can be supported through an adapter but need not be a separate first-class architecture if DuckDB already owns local persistent operation. Elasticsearch/OpenSearch, graph databases and vector stores should all remain **optional indexes/projections**, not sources of identity truth.
 
@@ -887,7 +889,7 @@ Field(
 )
 ```
 
-Recommended capabilities include deterministic keyed tokenization for exact cross-system matching, pluggable privacy-preserving matchers, per-field retention policies, redaction of evidence payloads, external-model exposure controls and audit-safe hashes/fingerprints. AWS ER's rule workflows demonstrate one production precedent for comparing certain hashed inputs and for hashing outputs, while its ML mode has different cleartext requirements—another reason privacy must be expressed per resolver rather than as one global switch. citeturn15search16turn15search23
+Recommended capabilities include deterministic keyed tokenization for exact cross-system matching, pluggable privacy-preserving matchers, per-field retention policies, redaction of evidence payloads, external-model exposure controls and audit-safe hashes/fingerprints. AWS ER's rule workflows demonstrate one production precedent for comparing certain hashed inputs and for hashing outputs, while its ML mode has different cleartext requirements—another reason privacy must be expressed per resolver rather than as one global switch.
 
 An external LLM adapter should default to **deny raw sensitive fields unless explicitly permitted**. A resolver that requires sending names, addresses or identifiers to a remote model must advertise that capability requirement so deployment policy can disable it.
 
@@ -1071,7 +1073,7 @@ The answer should be reconstructable without asking an LLM to invent a post-hoc 
 
 ### MCP surface
 
-MCP is now an open standard for connecting AI applications to external systems, tools and data sources. citeturn21search0 That makes it an excellent **thin protocol boundary** around the library, but it should not become the internal architecture.
+MCP is now an open standard for connecting AI applications to external systems, tools and data sources. That makes it an excellent **thin protocol boundary** around the library, but it should not become the internal architecture.
 
 The proposed tools are close to right, with one crucial modification: separate *proposing* identity changes from *committing* them.
 
@@ -1155,7 +1157,7 @@ proposal ID
 approval token or configured auto-approval policy
 ```
 
-MCP's purpose is standardized external tool interaction, not authorization by itself; therefore tool exposure and state-change policy belong to the ER service. citeturn21search0
+MCP's purpose is standardized external tool interaction, not authorization by itself; therefore tool exposure and state-change policy belong to the ER service.
 
 ### Agentic use cases
 
@@ -1180,7 +1182,7 @@ stable entity IDs
         └── workflow automation
 ```
 
-The emerging direction in vendor systems is already toward real-time identity services rather than occasional batch dedupe; Senzing, AWS ER and cloud customer-profile products all expose persistent or incremental matching concepts in different forms. citeturn22search0turn15search16turn15search23 The architectural recommendation goes one step farther: an agent should consume resolved identity as shared infrastructure instead of embedding ad-hoc matching prompts inside every agent workflow.
+The emerging direction in vendor systems is already toward real-time identity services rather than occasional batch dedupe; Senzing, AWS ER and cloud customer-profile products all expose persistent or incremental matching concepts in different forms. The architectural recommendation goes one step farther: an agent should consume resolved identity as shared infrastructure instead of embedding ad-hoc matching prompts inside every agent workflow.
 
 ## Evaluation strategy
 
@@ -1243,7 +1245,7 @@ rather than simply thresholding everything at 0.5.
 
 No single existing benchmark adequately tests the proposed architecture.
 
-The classic entity-matching suites used in neural work such as Ditto contain datasets covering bibliographic and product matching and are useful for controlled pairwise comparisons. citeturn5search0 These commonly used families should be included where licensing permits:
+The classic entity-matching suites used in neural work such as Ditto contain datasets covering bibliographic and product matching and are useful for controlled pairwise comparisons. These commonly used families should be included where licensing permits:
 
 ```text
 DBLP–ACM
@@ -1253,7 +1255,7 @@ Abt–Buy products
 Walmart–Amazon products
 ```
 
-They are valuable because many published entity-matching systems report results on overlapping benchmark families, making regression comparisons possible. Ditto's benchmark results are a useful modern neural baseline. citeturn5search0
+They are valuable because many published entity-matching systems report results on overlapping benchmark families, making regression comparisons possible. Ditto's benchmark results are a useful modern neural baseline.
 
 But they are insufficient for this project because standard pair datasets usually do not stress:
 
@@ -1374,7 +1376,7 @@ relationship review
 
 Cluster review is especially important because pairwise review can miss a weak bridge that creates an incoherent cluster.
 
-Dedupe's use of ML for ER supports the broader pattern of interactive labeled information improving matching. citeturn3search24 The engine should therefore expose reviewed examples in an explicit training store rather than automatically retraining in-place; automatic retraining could silently alter production behavior.
+Dedupe's use of ML for ER supports the broader pattern of interactive labeled information improving matching. The engine should therefore expose reviewed examples in an explicit training store rather than automatically retraining in-place; automatic retraining could silently alter production behavior.
 
 ### Test methodology
 
@@ -1445,7 +1447,7 @@ The MVP **does not need** a graph database, vector database, LLM dependency, Spa
 
 Add PostgreSQL persistence, transaction-safe ledger commits, entity/version optimistic concurrency, resolution memory, incremental indexing, batch APIs and background-job integration hooks.
 
-Add Fellegi-Sunter-style resolver support; Splink is a useful reference for explainable probabilistic comparison levels and scalable linkage. citeturn1search0turn20search9
+Add Fellegi-Sunter-style resolver support; Splink is a useful reference for explainable probabilistic comparison levels and scalable linkage.
 
 Add pluggable search candidate generators:
 
@@ -1458,7 +1460,7 @@ external canonical registry
 
 Add organization, person, address and product plugins, typed relationship taxonomies, cluster consistency validation, calibration utilities and review queues.
 
-Add the thin MCP server after the Python semantics stabilize. MCP provides a standardized way for AI applications to reach tools/data, so a semantic ER tool surface is a natural integration layer rather than a reason to redesign the core. citeturn21search0
+Add the thin MCP server after the Python semantics stabilize. MCP provides a standardized way for AI applications to reach tools/data, so a semantic ER tool surface is a natural integration layer rather than a reason to redesign the core.
 
 **V2 — add model-assisted resolution.**
 
@@ -1475,7 +1477,7 @@ shadow evaluation
 active-learning sampler
 ```
 
-Ditto provides a strong benchmark/reference point for transformer pair matching, while current LLM research provides useful evidence for constrained LLM-assisted and cluster-level ER. citeturn5search0turn5search3
+Ditto provides a strong benchmark/reference point for transformer pair matching, while current LLM research provides useful evidence for constrained LLM-assisted and cluster-level ER.
 
 LLM functionality should be an optional package extra. Nothing in the core should import an LLM SDK.
 
@@ -1508,7 +1510,7 @@ cross-modal source provenance
 temporal organizational identity
 ```
 
-The direction suggested by Transformer ER, cluster-oriented LLM ER, persistent commercial identity systems and MCP-style agent tooling is that entity resolution is moving from a preprocessing operation toward a reusable **identity infrastructure primitive**. citeturn5search0turn5search3turn22search0turn21search0
+The direction suggested by Transformer ER, cluster-oriented LLM ER, persistent commercial identity systems and MCP-style agent tooling is that entity resolution is moving from a preprocessing operation toward a reusable **identity infrastructure primitive**.
 
 The analogy to search is useful:
 
@@ -1571,37 +1573,37 @@ That preserves what worked empirically while eliminating the aspects that would 
 
 **Decision: Keep observations logically immutable and separate from canonical entities.**
 
-**Rationale:** Source records and document occurrences are evidence about entities, not the entities themselves. Keeping them separate makes splits, reprocessing, audit, temporal reasoning and new model evaluation possible. Palantir's documented separation between integrated data assets and Ontology objects is a useful analogous production pattern. citeturn8view1
+**Rationale:** Source records and document occurrences are evidence about entities, not the entities themselves. Keeping them separate makes splits, reprocessing, audit, temporal reasoning and new model evaluation possible. Palantir's documented separation between integrated data assets and Ontology objects is a useful analogous production pattern.
 
 **Tradeoff:** Storage use is higher, and retention/privacy controls must be able to redact or tombstone payloads rather than interpreting “immutable” as “legally undeletable.”
 
 **Decision: Give every canonical entity a system-generated stable identifier independent of names and source keys.**
 
-**Rationale:** Names and external IDs can change, conflict or be replaced. Stable semantic object identity is also a core concept in Palantir's object model. citeturn6search9turn6search16
+**Rationale:** Names and external IDs can change, conflict or be replaced. Stable semantic object identity is also a core concept in Palantir's object model.
 
 **Tradeoff:** Downstream systems need redirect/lineage semantics when two previously issued entity IDs are merged.
 
 **Decision: Make candidate generation and identity decisioning separate public abstractions.**
 
-**Rationale:** Retrieval optimizes recall and cost; decisioning optimizes precision and calibrated identity. Existing record-linkage toolkits already separate indexing from comparison/classification. citeturn3search23
+**Rationale:** Retrieval optimizes recall and cost; decisioning optimizes precision and calibrated identity. Existing record-linkage toolkits already separate indexing from comparison/classification.
 
 **Tradeoff:** More interfaces and instrumentation than a single `match()` API.
 
 **Decision: Treat evidence as immutable first-class data and decisions as separate immutable records.**
 
-**Rationale:** The same evidence can later be scored by a new Fellegi-Sunter model, gradient booster, LLM or human policy without pretending the evidence itself changed. Splink's decomposed comparison levels demonstrate the value of inspecting the contributing pieces of a probabilistic match. citeturn20search9
+**Rationale:** The same evidence can later be scored by a new Fellegi-Sunter model, gradient booster, LLM or human policy without pretending the evidence itself changed. Splink's decomposed comparison levels demonstrate the value of inspecting the contributing pieces of a probabilistic match.
 
 **Tradeoff:** Evidence records can become voluminous, so storage policies and compact representations will be needed at very high scale.
 
 **Decision: Do not define one universal confidence number.**
 
-**Rationale:** BM25 relevance, cosine similarity, Fellegi-Sunter weights, calibrated probabilities, deterministic rules and human judgments have incompatible semantics. AWS itself exposes different explanatory constructs for rule-based versus ML matching. citeturn15search16turn15search23
+**Rationale:** BM25 relevance, cosine similarity, Fellegi-Sunter weights, calibrated probabilities, deterministic rules and human judgments have incompatible semantics. AWS itself exposes different explanatory constructs for rule-based versus ML matching.
 
 **Tradeoff:** Client applications must understand typed scores rather than sorting blindly on `confidence`.
 
 **Decision: Make identity, aliases, external mappings and relationships different assertion types.**
 
-**Rationale:** `same_entity`, `alias_of`, `subsidiary_of`, `brand_of`, `successor_to` and `located_at` answer fundamentally different questions. Graph ER research shows relationships are useful evidence, but relational similarity does not erase those distinctions. citeturn19search7
+**Rationale:** `same_entity`, `alias_of`, `subsidiary_of`, `brand_of`, `successor_to` and `located_at` answer fundamentally different questions. Graph ER research shows relationships are useful evidence, but relational similarity does not erase those distinctions.
 
 **Tradeoff:** Ontology design becomes more explicit and requires domain configuration.
 
@@ -1613,7 +1615,7 @@ That preserves what worked empirically while eliminating the aspects that would 
 
 **Decision: Maintain an append-only resolution ledger plus materialized current state.**
 
-**Rationale:** This gives the project the audit and replay advantages of event sourcing without requiring every read to reconstruct the world from events. Palantir's action-log/edit-history separation is a useful analogous pattern for preserving decision context alongside current object state. citeturn10view0turn10view1
+**Rationale:** This gives the project the audit and replay advantages of event sourcing without requiring every read to reconstruct the world from events. Palantir's action-log/edit-history separation is a useful analogous pattern for preserving decision context alongside current object state.
 
 **Tradeoff:** Ledger schemas and materialized projections must evolve carefully.
 
@@ -1631,13 +1633,13 @@ That preserves what worked empirically while eliminating the aspects that would 
 
 **Decision: Constrain LLMs to evidence extraction, adjudication and explanation; never grant them direct identity-state mutation.**
 
-**Rationale:** Current research demonstrates promising LLM ER performance but also exposes hallucination and cluster-merging risks. citeturn5search3turn5search15 A structured resolver boundary preserves the ability to replace, audit or distill the model. citeturn5academia35
+**Rationale:** Current research demonstrates promising LLM ER performance but also exposes hallucination and cluster-merging risks. A structured resolver boundary preserves the ability to replace, audit or distill the model.
 
 **Tradeoff:** The LLM receives less freedom than an end-to-end agent and requires more engineering around schemas and evidence.
 
 **Decision: Treat human review as a normal resolver and a source of supervised feedback.**
 
-**Rationale:** Interactive ML systems such as Dedupe demonstrate the importance of user-provided labels in practical ER. citeturn3search24 Human decisions should feed a reusable training store and rule-discovery process.
+**Rationale:** Interactive ML systems such as Dedupe demonstrate the importance of user-provided labels in practical ER. Human decisions should feed a reusable training store and rule-discovery process.
 
 **Tradeoff:** Reviewer consistency, permissions and disagreement must themselves be measured.
 
@@ -1655,25 +1657,25 @@ That preserves what worked empirically while eliminating the aspects that would 
 
 **Decision: Keep graph databases, vector stores and search engines as optional indexes/projections rather than identity authorities.**
 
-**Rationale:** Search engines are excellent candidate generators, vectors provide semantic retrieval and graph stores provide relational context, but none alone supplies the policy, provenance and reversibility required for identity. Elasticsearch's own text-analysis model is fundamentally retrieval-oriented, while Neo4j's graph framing emphasizes contextual relationships. citeturn18search13turn17search19
+**Rationale:** Search engines are excellent candidate generators, vectors provide semantic retrieval and graph stores provide relational context, but none alone supplies the policy, provenance and reversibility required for identity. Elasticsearch's own text-analysis model is fundamentally retrieval-oriented, while Neo4j's graph framing emphasizes contextual relationships.
 
 **Tradeoff:** There is an additional core store whose state must be synchronized to external indexes.
 
 **Decision: Make DuckDB the preferred local/batch profile and PostgreSQL the preferred production relational profile, with adapters rather than infrastructure mandates.**
 
-**Rationale:** ER benefits heavily from relational scans, blocking joins and feature aggregation, as SQL-oriented systems such as Splink demonstrate. citeturn1search0 Parquet provides an efficient open bulk-storage/interchange format for observations and feature artifacts. citeturn21search1
+**Rationale:** ER benefits heavily from relational scans, blocking joins and feature aggregation, as SQL-oriented systems such as Splink demonstrate. Parquet provides an efficient open bulk-storage/interchange format for observations and feature artifacts.
 
 **Tradeoff:** Extremely large distributed workloads may eventually need specialized Spark/warehouse executors.
 
 **Decision: Expose MCP as a semantic safety boundary over the Python library, not as a second implementation.**
 
-**Rationale:** MCP standardizes AI access to external tools and data. citeturn21search0 The server should therefore expose `resolve`, `find_candidates`, `explain`, `propose_merge`, `review` and controlled commit operations while the Python package remains the source of behavior.
+**Rationale:** MCP standardizes AI access to external tools and data. The server should therefore expose `resolve`, `find_candidates`, `explain`, `propose_merge`, `review` and controlled commit operations while the Python package remains the source of behavior.
 
 **Tradeoff:** Some low-level library capabilities will intentionally not be remotely exposed.
 
 **Decision: Model entity resolution as persistent constrained reasoning rather than a one-time pair classifier.**
 
-**Rationale:** The system ultimately needs to answer not merely whether two strings look alike but whether a new observation should attach to an existing identity, create a new identity, remain unresolved, trigger review, or establish a non-identity relationship—while preserving enough evidence to change its mind later. Classical probabilistic linkage, collective graph ER, transformer matching, emerging LLM ER and production identity systems each solve useful portions of this problem; none is sufficient alone. citeturn20search1turn19search7turn5search0turn5search3turn15search30
+**Rationale:** The system ultimately needs to answer not merely whether two strings look alike but whether a new observation should attach to an existing identity, create a new identity, remain unresolved, trigger review, or establish a non-identity relationship—while preserving enough evidence to change its mind later. Classical probabilistic linkage, collective graph ER, transformer matching, emerging LLM ER and production identity systems each solve useful portions of this problem; none is sufficient alone.
 
 **Tradeoff:** This is a larger conceptual contract than a deduplication library. The payoff is that the same substrate can support batch linkage, knowledge graphs, enterprise master identity, document intelligence, retrieval, RAG and agent workflows without sacrificing deterministic evidence, provenance, uncertainty or reversibility.
 

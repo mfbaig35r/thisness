@@ -69,8 +69,8 @@ def default_prompt() -> Prompt:
 @dataclass
 class NameOnlyPlan:
     client: LLMClient
-    model: str = "claude-haiku-4-5"  # grouping passes
-    verify_model: str = "claude-sonnet-5"
+    model: str = "gpt-6-luna"  # grouping passes
+    verify_model: str = "gpt-6-luna"
     batch_size: int = 60
     overlap: float = 0.5
     verify_batch: int = 12
