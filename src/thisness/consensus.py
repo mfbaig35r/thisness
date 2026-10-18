@@ -413,12 +413,18 @@ class ValidatedComponents:
             )
         groups = _bounded_groups(contested, self.max_boundary,
                                  {_key(a, b): v for (a, b), v in (strength or {}).items()})  # fmt: skip
-        boundaries = []
-        unasked = 0
-        for members in groups:
-            pairs = sorted((a, b) for i, j, a, b in contested if i in members and j in members)
-            boundaries.append(Boundary(tuple(sorted(members)), tuple(pairs)))
+        # The groups are disjoint, so one pass gives each contested pair its group, or
+        # none when it would join two (design 10 §3.1).
         grouped = {i: k for k, members in enumerate(groups) for i in members}
-        unasked = sum(1 for i, j, _, _ in contested if grouped.get(i) != grouped.get(j))
+        pairs_of: dict[int, list[tuple[str, str]]] = {}
+        unasked = 0
+        for i, j, a, b in contested:
+            k = grouped.get(i)
+            if k != grouped.get(j):
+                unasked += 1
+            elif k is not None:
+                pairs_of.setdefault(k, []).append((a, b))
+        boundaries = [Boundary(tuple(sorted(members)), tuple(sorted(pairs_of.get(k, ()))))
+                      for k, members in enumerate(groups)]  # fmt: skip
         return ConsensusResult(tuple(final), tuple(sorted(boundaries, key=lambda b: b.clusters)),
                                unasked_pairs=unasked)  # fmt: skip

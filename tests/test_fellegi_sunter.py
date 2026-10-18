@@ -144,6 +144,7 @@ def test_config_round_trip_reproduces_the_ref():
     assert restored == model
     assert restored.ref == model.ref
     assert model.ref.ref.startswith("model:fellegi_sunter.organization@1#")
+    assert model.ref is model.ref  # computed once: resolution reads it per pair (design 10)
 
 
 def test_an_adjustment_without_boost_only_discounts():

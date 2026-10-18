@@ -51,6 +51,9 @@ def main() -> None:
     edgar_audit = sub.add_parser("edgar-audit", help="read samples of the truth's doubts")
     edgar_audit.add_argument("--n", type=int, default=40)
     sub.add_parser("edgar-fixture", help="rebuild the shipped EDGAR fixture from the staged data")
+    digest = sub.add_parser("store-digest",
+                            help="hash every table of a store; with two, list what differs")  # fmt: skip
+    digest.add_argument("stores", type=Path, nargs="+")
     starter = sub.add_parser("starter", help="rebuild a starter model")
     starter.add_argument("--type", default="organization", choices=sorted(GENERATORS))
     starter.add_argument("--out", type=Path, default=None)
@@ -90,6 +93,16 @@ def main() -> None:
             print(f"wrote {edgar.make_fixture()}")
         else:
             print(json.dumps(edgar.audit(n=args.n), indent=1))
+    elif args.command == "store-digest":
+        from thisness.benchmark.digest import differences, store_digest
+
+        if len(args.stores) == 1:
+            for table, (count, digest) in store_digest(args.stores[0]).items():
+                print(f"{table}\t{count}\t{digest}")
+        else:
+            changed = differences(args.stores[0], args.stores[1])
+            print("\n".join(changed) if changed else "identical")
+            raise SystemExit(1 if changed else 0)
     elif args.command == "wfo-fixture":
         target = Path(taxa.__file__).parent / "data" / "wfo_fixture.csv.gz"
         taxa.write_rows(taxa.families(taxa.FIXTURE_FAMILIES), target)

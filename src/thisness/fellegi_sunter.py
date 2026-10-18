@@ -17,6 +17,7 @@ import math
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import cached_property
 from typing import Any
 
 from thisness.core.components import ComponentRef
@@ -117,8 +118,10 @@ class FSModel:
             version=version,
         )
 
-    @property
+    @cached_property
     def ref(self) -> ComponentRef:
+        # The model is frozen, so its ref is computed once: building it digests the
+        # whole config, and resolution reads it per pair (design 10 §3.1).
         return ComponentRef.of(
             "model", f"fellegi_sunter.{self.entity_type}", self.version, self.config()
         )

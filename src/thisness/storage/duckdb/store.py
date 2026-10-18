@@ -793,12 +793,14 @@ class DuckDBStore:
         needed = sorted({o for _, _, members in plan.snapshot_targets for o in members})
         labels = self._labels([e for e, _, _ in plan.snapshot_targets])
         by_id = {o.observation_id: o for o in self.observations(needed)}
+        registered: set[str] = set()  # once per commit, not once per snapshot (design 10 §3.1)
         for entity_id, version, members in plan.snapshot_targets:
             observations = [by_id[o] for o in members]
             # A dispatching canonicalizer names the one that actually built the snapshot.
             chosen = canonicalizer.pick(observations) if hasattr(canonicalizer, "pick") \
                 else canonicalizer  # fmt: skip
-            if chosen is not canonicalizer:
+            if chosen is not canonicalizer and chosen.ref.ref not in registered:
+                registered.add(chosen.ref.ref)
                 self._register(chosen.ref, None)
             attributes = chosen.build(observations)
             if entity_id in labels:  # an accepted name outranks any canonicalizer's

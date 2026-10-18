@@ -653,16 +653,31 @@ class Thisness:
                     outcomes[obs] = ObservationOutcome(obs, "REQUIRES_REVIEW", entity,
                                                        "provisional", decision_id)  # fmt: skip
 
-        for cluster in result.clusters:
-            inside = set(cluster.members)
-            strong_edges = sorted(
-                judgment_of[i]
-                for pair, (cls, idx) in folded.items()
-                if cls == "strong" and pair[0] in inside and pair[1] in inside
-                for i in idx
-                if i in judgment_of
-            ) + sorted(d for (a, b), d in (llm_strong or {}).items()
-                       if a in inside and b in inside)  # fmt: skip
+        # Each cluster's strong edges, found in one pass over the pairs rather than one
+        # pass per cluster (design 10 §3.1).
+        clusters_of: dict[str, list[int]] = {}
+        for k, cluster in enumerate(result.clusters):
+            for node in cluster.members:
+                clusters_of.setdefault(node, []).append(k)
+
+        def shared(a: str, b: str) -> list[int]:
+            left, right = clusters_of.get(a, ()), clusters_of.get(b, ())
+            return [k for k in left if k in right]
+
+        resolver_edges: dict[int, list[str]] = {}
+        for (a, b), (cls, idx) in folded.items():
+            if cls != "strong":
+                continue
+            for k in shared(a, b):
+                resolver_edges.setdefault(k, []).extend(judgment_of[i] for i in idx
+                                                        if i in judgment_of)  # fmt: skip
+        model_edges: dict[int, list[str]] = {}
+        for (a, b), d in (llm_strong or {}).items():
+            for k in shared(a, b):
+                model_edges.setdefault(k, []).append(d)
+
+        for k, cluster in enumerate(result.clusters):
+            strong_edges = sorted(resolver_edges.get(k, ())) + sorted(model_edges.get(k, ()))
             flags = {
                 "conflicts": [list(c) for c in cluster.conflicts],
                 "bridges": [list(b) for b in cluster.bridges],
