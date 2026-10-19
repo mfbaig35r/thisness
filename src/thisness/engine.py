@@ -17,6 +17,7 @@ supplies entity-level frequencies (design 03 §8.5).
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -65,7 +66,7 @@ from thisness.fellegi_sunter import FSModel
 from thisness.ids import IdFactory
 from thisness.policy import ResolutionPolicy
 from thisness.profiles.base import AttributeDefinition, ResolutionProfile
-from thisness.scoring import evidence_items, score_pairs
+from thisness.scoring import ScoredRows, evidence_items, score_pairs
 from thisness.starter import load_starter
 from thisness.storage.duckdb import DuckDBStore
 from thisness.storage.errors import CommitConflict, InvalidOperation, NotFound, ThisnessError
@@ -128,6 +129,7 @@ class Thisness:
         tf_min_entities: int = 200,
         adjudicator: Adjudicator | None = None,
         assistant: Any = None,
+        write_chunk: int = 50_000,
     ) -> None:
         self.ids = ids or IdFactory()
         self.clock = clock or (lambda: datetime.now(UTC))
@@ -147,6 +149,7 @@ class Thisness:
         self.tf_min_entities = tf_min_entities
         self.adjudicator = adjudicator  # design 05 §4: judges contested pairs
         self.assistant = assistant  # design 05 §5: recommends answers to reviews
+        self.write_chunk = write_chunk  # pairs per evidence and judgment write (design 10)
         for component in (self.edge_policy, self.consensus, self.policy, self.canonicalizer):
             self.store.register_component(component.ref, {})
         for profile in profiles:
@@ -419,7 +422,7 @@ class Thisness:
         def consensus_pass(tables, t_high=t_high, adjudicate=False):
             nonlocal adjudication_stage
             scored = score_pairs(profile, model, features, all_pairs, tables=tables)
-            rows = scored.to_pylist()
+            rows = ScoredRows(scored)
             classes = [
                 (
                     r["left_id"],
@@ -519,16 +522,43 @@ class Thisness:
             if cls != "negative" or same or rows[i]["relationship_signal"]:
                 keep.append(i)
         kept = scored.take(pa.array(keep, pa.int64()))
-        evidence = evidence_items(profile, model, kept, features, new_id=self.ids.evidence,
-                                  created_at=now, run_id=run.run_id,
-                                  stage_id=resolver_stage)  # fmt: skip
-        by_pair: dict[tuple[str, str], list[EvidenceItem]] = {}
-        for item in evidence:
-            by_pair.setdefault((item.left_id, item.right_id), []).append(item)
+        # Evidence and judgments are written a chunk at a time, never all held at once
+        # (design 10 §3.2). Ids are created in the order they always were, all evidence
+        # before any judgment, so a run's output is unchanged. What each kept pair's
+        # judgment cites is kept in flat lists: kept pair j's evidence is
+        # evidence_ids[starts[j]:starts[j + 1]].
+        evidence_ids: list[str] = []
+        evidence_attributes: list[str | None] = []
+        starts = [0]
+        for begin in range(0, len(keep), self.write_chunk):
+            chunk = kept.slice(begin, self.write_chunk)
+            items = evidence_items(profile, model, chunk, features, new_id=self.ids.evidence,
+                                   created_at=now, run_id=run.run_id,
+                                   stage_id=resolver_stage)  # fmt: skip
+            k = 0
+            for pair in zip(chunk.column("left_id").to_pylist(),
+                            chunk.column("right_id").to_pylist(), strict=True):  # fmt: skip
+                while k < len(items) and (items[k].left_id, items[k].right_id) == pair:
+                    evidence_ids.append(items[k].evidence_id)
+                    evidence_attributes.append(items[k].attribute)
+                    k += 1
+                starts.append(len(evidence_ids))
+            store.record_evidence(items)
+        left_ids, right_ids = rows.column("left_id"), rows.column("right_id")
+
+        def cited(pair: tuple[str, str]) -> list[tuple[str | None, str]]:
+            """A kept pair's evidence as (attribute, evidence id). Kept pairs are sorted."""
+            j = bisect_left(keep, pair, key=lambda i: (left_ids[i], right_ids[i]))
+            if j == len(keep) or (left_ids[keep[j]], right_ids[keep[j]]) != pair:
+                return []
+            span = slice(starts[j], starts[j + 1])
+            return list(zip(evidence_attributes[span], evidence_ids[span], strict=True))
+
         refs = (model.ref.ref, self.edge_policy.ref.ref, profile.ref.ref)
         judgment_of: dict[int, str] = {}
+        recorded_judgments = 0
         judgments = []
-        for i in keep:
+        for j, i in enumerate(keep):
             r = rows[i]
             scores = [
                 Score(kind="fellegi_sunter_weight", value=r["fs_weight"], model_ref=model.ref.ref),
@@ -546,19 +576,22 @@ class Thisness:
                 right_id=r["right_id"],
                 verdict=VERDICT[classes[i][2]],
                 scores=tuple(scores),
-                evidence_ids=tuple(
-                    e.evidence_id for e in by_pair.get((r["left_id"], r["right_id"]), ())
-                ),
+                evidence_ids=tuple(evidence_ids[starts[j] : starts[j + 1]]),
                 component_refs=refs,
                 created_at=now,
             )
             judgment_of[i] = judgment.decision_id
             judgments.append(judgment)
+            if len(judgments) == self.write_chunk:
+                store.record_decisions(judgments)
+                recorded_judgments += len(judgments)
+                judgments = []
+        if judgments:
+            store.record_decisions(judgments)
+            recorded_judgments += len(judgments)
 
         llm_judgments, llm_evidence, llm_strong = self._adjudication_records(
-            adjudicator, adjudications, by_pair, run.run_id, adjudication_stage, now)  # fmt: skip
-        evidence += llm_evidence
-        judgments += llm_judgments
+            adjudicator, adjudications, cited, run.run_id, adjudication_stage, now)  # fmt: skip
         ops, outcomes, decisions, reviews = self._plan(
             profile,
             model,
@@ -572,11 +605,12 @@ class Thisness:
             now,
             llm_strong,
         )
+        signal = rows.column("relationship_signal")
         relationship_candidates = tuple(
-            (r["left_id"], r["right_id"]) for r in rows if r["relationship_signal"]
+            (left_ids[i], right_ids[i]) for i in range(len(rows)) if signal[i]
         )
-        store.record_evidence(evidence)
-        store.record_decisions([*judgments, *decisions])
+        store.record_evidence(llm_evidence)
+        store.record_decisions([*llm_judgments, *decisions])
         changes = ChangeSet(
             run_id=run.run_id,
             base_seq=run.base_seq,
@@ -591,8 +625,8 @@ class Thisness:
             "candidate_pairs": len(pairs),
             "representative_pairs": len(extra),
             "scored_pairs": len(rows),
-            "recorded_judgments": len(judgments),
-            "evidence": len(evidence),
+            "recorded_judgments": recorded_judgments + len(llm_judgments),
+            "evidence": len(evidence_ids) + len(llm_evidence),
             "clusters": len(result.clusters),
             "t_high": t_high,
             "term_frequency": tf_mode,
@@ -787,10 +821,11 @@ class Thisness:
                                   weight=max(rows[i]["weight"] for i in idx)))  # fmt: skip
         return cases, definitions
 
-    def _adjudication_records(self, adjudicator, adjudications, by_pair, run_id, stage_id, now):
+    def _adjudication_records(self, adjudicator, adjudications, cited, run_id, stage_id, now):
         """Each answer as a pair judgment citing the evidence it named, plus its own
-        ``llm_adjudication`` evidence item. Returns judgments, evidence, and the
-        judgment id of every answer that set a strong edge."""
+        ``llm_adjudication`` evidence item. ``cited(pair)`` gives a scored pair's evidence
+        as (attribute, evidence id). Returns judgments, evidence, and the judgment id of
+        every answer that set a strong edge."""
         judgments, evidence, strong = [], [], {}
         verdicts = {"same": Verdict.MATCH, "different": Verdict.NO_MATCH,
                     "related": Verdict.NO_MATCH, "unsure": Verdict.REQUIRES_REVIEW}  # fmt: skip
@@ -799,11 +834,11 @@ class Thisness:
             if answer is None:
                 continue
             left, right = adjudication.case.nodes
-            cited = []
+            named = []
             for local in answer.supporting + answer.contradicting:
                 left_obs, right_obs, comparison = adjudication.case.evidence_keys[local]
-                cited += [e.evidence_id for e in by_pair.get((left_obs, right_obs), ())
-                          if e.attribute == comparison]  # fmt: skip
+                named += [evidence_id for attribute, evidence_id in cited((left_obs, right_obs))
+                          if attribute == comparison]  # fmt: skip
             item = EvidenceItem(
                 evidence_id=self.ids.evidence(), left_id=left, right_id=right,
                 kind="llm_adjudication", attribute="llm_adjudication", level=answer.decision,
@@ -822,7 +857,7 @@ class Thisness:
                 verdict=verdicts[answer.decision],
                 scores=(Score(kind="llm_decision", value=answer.decision),
                         Score(kind="llm_applied", value=adjudication.applied)),
-                evidence_ids=(item.evidence_id, *sorted(set(cited))),
+                evidence_ids=(item.evidence_id, *sorted(set(named))),
                 component_refs=(adjudicator.ref.ref, adjudicator.prompt.ref.ref),
                 invocation_id=adjudication.invocation_id,
                 created_at=now,

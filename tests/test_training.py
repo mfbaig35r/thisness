@@ -149,3 +149,14 @@ def test_evidence_items_follow_log_policy_and_record(store, ids, now, loaded, mo
         store.register_component(c.ref, {})
     store.record_evidence(items[:500])
     assert store.evidence([items[0].evidence_id]) == [items[0]]
+
+
+def test_scored_rows_read_like_dicts():
+    import pyarrow as pa
+
+    from thisness.scoring import ScoredRows
+
+    rows = ScoredRows(pa.table({"left_id": ["a", "b"], "weight": [1.5, -2.0]}))
+    assert len(rows) == 2 and rows[1]["weight"] == -2.0 and rows[-1]["left_id"] == "b"
+    assert dict(rows[0]) == {"left_id": "a", "weight": 1.5}
+    assert rows[0].get("missing") is None and [r["left_id"] for r in rows] == ["a", "b"]

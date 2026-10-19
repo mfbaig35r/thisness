@@ -10,9 +10,9 @@ evidence records. Edge classes and consensus are applied later (design 01).
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from datetime import datetime
-from typing import Any
+from typing import Any, overload
 
 import pyarrow as pa
 
@@ -21,6 +21,55 @@ from thisness.core.evidence import EvidenceItem, Score
 from thisness.fellegi_sunter import FSModel
 from thisness.profiles.base import ResolutionProfile
 from thisness.training import EMPTY, pattern
+
+
+class ScoredRows(Sequence[Mapping[str, Any]]):
+    """The rows of a scored table, read by index without turning the table into one
+    dict per pair (design 10 §3.2). A column becomes a Python list the first time it is
+    read; columns nobody reads stay in Arrow."""
+
+    def __init__(self, table: pa.Table) -> None:
+        self.table = table
+        self.names = tuple(table.column_names)
+        self._columns: dict[str, list[Any]] = {}
+
+    def column(self, name: str) -> list[Any]:
+        values = self._columns.get(name)
+        if values is None:
+            if name not in self.names:
+                raise KeyError(name)
+            values = self._columns[name] = self.table.column(name).to_pylist()
+        return values
+
+    def __len__(self) -> int:
+        return self.table.num_rows
+
+    @overload
+    def __getitem__(self, i: int) -> Mapping[str, Any]: ...
+    @overload
+    def __getitem__(self, i: slice) -> Sequence[Mapping[str, Any]]: ...
+    def __getitem__(self, i):
+        if isinstance(i, slice):
+            return [_Row(self, k) for k in range(*i.indices(len(self)))]
+        if not -len(self) <= i < len(self):
+            raise IndexError(i)
+        return _Row(self, i % len(self))
+
+
+class _Row(Mapping[str, Any]):
+    __slots__ = ("_i", "_rows")
+
+    def __init__(self, rows: ScoredRows, i: int) -> None:
+        self._rows, self._i = rows, i
+
+    def __getitem__(self, key: str) -> Any:
+        return self._rows.column(key)[self._i]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._rows.names)
+
+    def __len__(self) -> int:
+        return len(self._rows.names)
 
 
 def _schema(profile: ResolutionProfile) -> pa.Schema:

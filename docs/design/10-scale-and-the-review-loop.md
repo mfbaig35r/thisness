@@ -1,6 +1,6 @@
 # Design 10: scale, and the review loop
 
-Status: accepted 2026-10-18, with the decisions of section 7 as proposed. Step 1 done (§10.1).
+Status: accepted 2026-10-18, with the decisions of section 7 as proposed. Steps 1 and 2 done (§10.1, §10.2).
 
 Builds on: design 03 (consensus, §9 to §11), design 04 (reviews, §2.4; labels from reviews, §2.7), design 05 (the review assistant, §5), design 07 §13.4 (scale on real organizations) and design 09 §11.4 and §11.5 (the assistant and scale on real people), as of 0.3.1 (commit 0309faf).
 
@@ -15,7 +15,7 @@ Part A makes a run cheap. Part B makes reviews cheap and makes each answer count
 
 ## 2. What was measured first
 
-UK benchmark, identifiers hidden, seed 20261009, no model, this laptop (24 GB, 12 cores). Time without a profiler; peak memory from memray, which counts what Python and DuckDB allocate. macOS compresses memory, so resident size (`/usr/bin/time -l`) understates it: 7.3 GB resident against 15.2 GB allocated at 46,565 records, and two runs at 24,318 records read 6.3 and 7.8 GB.
+UK benchmark, identifiers hidden, seed 20261009, no model, this laptop (24 GB, 12 cores). Time without a profiler; peak memory from memray, which counts what Python and DuckDB allocate. macOS compresses memory, so resident size (`/usr/bin/time -l`) understates it: 7.3 GB resident against 15.2 GB allocated at 46,565 records, and two runs at 24,318 records read 6.3 and 7.8 GB. (memray in turn overstates by about 1 GB that DuckDB reserves and barely touches; from step 2 on, memory is the process's peak footprint, §10.2.)
 
 | Records | Candidate pairs | Pair judgments | Evidence rows | Reviews | Time | Peak memory |
 |---|---|---|---|---|---|---|
@@ -89,7 +89,7 @@ Peak memory then holds the scored table, the edges and one chunk. The store's ta
 
 ### 3.3 DuckDB's share
 
-DuckDB's 3.2 GB is partly its buffer pool, which by default may grow to 80% of RAM. Step 2 measures what a `memory_limit` setting (exposed as `Thisness(..., memory_limit="4GB")` and `--memory-limit`) does to time and peak; a file-backed store spills, an in-memory one cannot.
+DuckDB's 3.2 GB is partly its buffer pool, which by default may grow to 80% of RAM. Step 2 measures what a `memory_limit` setting (exposed as `Thisness(..., memory_limit="4GB")` and `--memory-limit`) does to time and peak; a file-backed store spills, an in-memory one cannot. (Measured in §10.2: it changes neither, so there is no such setting.)
 
 ### 3.4 Targets, and a gate before the last one
 
@@ -138,7 +138,7 @@ This is an experiment before it is a feature. `thisness eval --answer N` has the
 
 ## 5. Benchmarks and what `eval` gains
 
-- Peak memory per run, measured with `tracemalloc` plus DuckDB's own report (`duckdb_memory()`), since resident size is unreliable on macOS.
+- Peak memory per run: the process's peak footprint (macOS) or high-water resident size (Linux), since resident size on macOS counts clean file pages and memray counts DuckDB's untouched reservations (§10.2).
 - Reviews per 1,000 records.
 - `--accept` (with `--assistant`): apply the suggestions the profile would accept, then report precision, recall and reviews left.
 - `--answer N`: the oracle answers N reviews, then calibration and triage (§4.3).
@@ -209,3 +209,23 @@ Wall time of the whole command, start-up and benchmark generation included.
 | 46,565 | 441 s | 88 s |
 
 **Memory did not move:** 15.17 GB peak at 46,565 records, against 15.21. The model ref's 1.1 GB is gone, but the peak now falls a moment later in the same write, when DuckDB's insert buffer (0.9 GB) and more of the run's state are alive. The write path sets the peak, which is step 2.
+
+### 10.2 Step 2: the write path in chunks
+
+- **Consensus reads columns, not dicts.** `scoring.ScoredRows` wraps the scored Arrow table: `rows[i]["weight"]` reads one column, which becomes a Python list the first time it is read. The 790,011 dicts of one row each are gone, and columns nobody reads (most comparison levels) stay in Arrow.
+- **Evidence and judgments are written a chunk at a time** (`Thisness(write_chunk=50_000)`). Ids are created in the order they always were, every evidence item before any judgment, so the output is unchanged; what each judgment cites is held in flat lists indexed by kept pair (kept pairs are sorted, so a model's answer finds its pair's evidence by bisection). A judgment chunk is written as soon as it is full.
+- **The check:** the five runs of §10.1 are identical to step 1's, table by table, and `tests/test_digest.py` checks that a chunk of seven pairs and one chunk for everything give identical stores.
+
+**How memory is measured from here.** memray counts about 1.07 GB that DuckDB reserves with `aligned_alloc` during ingest at any size; ingesting 3,507 records raised the resident size by 34 MB. Resident size on macOS includes clean file-backed pages (6.6 GB at 46,565 records, mostly the staged UK data the generator reads). The measure is the peak memory footprint `/usr/bin/time -l` reports for the Python process itself: the process's own memory, compressed pages included. Measured that way, with 0.3.1 and step 1 from clean worktrees:
+
+| Records | 0.3.1 | Step 1 | Step 2 |
+|---|---|---|---|
+| 12,605 | 2.66 GB | | 1.53 GB |
+| 46,565 | 14.38 GB | 14.41 GB | 3.24 GB |
+
+46,565 records now take 81 s to fit and resolve (88 s after step 1, 441 s in 0.3.1) and 3.2 GB: the targets of §3.4 (under 3 minutes and 4 GB) are met. Precision, recall, false merges and reviews are unchanged.
+
+**DuckDB's `memory_limit` changes nothing here,** so there is no setting for it (§3.3): at 46,565 records the peak footprint is 3.24 GB with no limit, 3.21 GB at 2 GB and 3.18 GB at 1 GB, and the time 81 s in every case. A smaller write chunk (10,000) changed neither time (80 s) nor peak.
+
+**What is left, for step 3.** Of the remaining peak, the run's per-pair Python state is the part that grows: the columns read as lists (ids, weights, classes), the folded pairs, the judgments' citations (1.3 million evidence id strings) and the candidate pairs. At 250,000 records and perhaps 9 million pairs these grow about tenfold, so step 3 starts by measuring candidate pairs at that size before deciding which of them must become arrays.
+
