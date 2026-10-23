@@ -28,6 +28,7 @@ from typing import Any
 
 from thisness.benchmark.organizations import _typo
 from thisness.benchmark.taxa import _context
+from thisness.storage.duckdb.store import _first
 
 CACHE = Path.home() / ".cache" / "thisness" / "uk"
 GLEIF_LATEST = "https://goldencopy.gleif.org/api/v2/golden-copies/publishes/latest"
@@ -170,9 +171,9 @@ def stage(db: Path = CACHE / "uk.duckdb", *, raw: Path = CACHE / "raw",
         con.execute(f"""
             create or replace table gleif as
             select "LEI" as lei, "Entity.LegalName" as legal_name,
-                   list_filter([{", ".join(_q(c) for c in other)}], x -> x is not null and x <> '')
+                   list_filter([{", ".join(_q(c) for c in other)}], lambda x: x is not null and x <> '')
                        as other_names,
-                   list_filter([{", ".join(_q(c) for c in other_types)}], x -> x is not null and x <> '')
+                   list_filter([{", ".join(_q(c) for c in other_types)}], lambda x: x is not null and x <> '')
                        as other_name_types,
                    "Entity.LegalAddress.FirstAddressLine" as legal_address_line,
                    "Entity.LegalAddress.City" as legal_city,
@@ -224,8 +225,8 @@ def stage(db: Path = CACHE / "uk.duckdb", *, raw: Path = CACHE / "raw",
                    "CompanyCategory" as category, "CompanyStatus" as status,
                    "CountryOfOrigin" as country_of_origin,
                    "IncorporationDate" as incorporation_date,
-                   list_filter([{sic}], x -> x is not null and x <> '') as sic,
-                   list_filter([{previous}], x -> x is not null and x <> '') as previous_names
+                   list_filter([{sic}], lambda x: x is not null and x <> '') as sic,
+                   list_filter([{previous}], lambda x: x is not null and x <> '') as previous_names
             from read_csv('{csvs["companies_house"]}', all_varchar=true, header=true,
                           normalize_names=false)
         """)
@@ -252,7 +253,7 @@ def truth_report(db: Path = CACHE / "uk.duckdb") -> dict[str, Any]:
         authorities = ", ".join(f"'{a}'" for a in CH_AUTHORITIES)
 
         def one(sql: str) -> Any:
-            return con.execute(sql).fetchone()[0]
+            return _first(con.execute(sql))[0]
 
         def rows(sql: str) -> list[tuple]:
             return con.execute(sql).fetchall()
@@ -365,7 +366,7 @@ TABLES = ("gleif", "gleif_rr", "ch")
 STEM_SQL = r"""array_to_string(list_slice(list_filter(string_split(trim(regexp_replace(
     regexp_replace(regexp_replace(lower(name), '[^a-z0-9 ]', ' ', 'g'),
     '\b(limited|ltd|plc|llp|lp|uk|the|holdings|group|services|company|co)\b', ' ', 'g'),
-    '\s+', ' ', 'g')), ' '), x -> x <> ''), 1, 2), ' ')"""
+    '\s+', ' ', 'g')), ' '), lambda x: x <> ''), 1, 2), ' ')"""
 
 
 def make_fixture(db: Path = CACHE / "uk.duckdb", out: Path = FIXTURE, *,

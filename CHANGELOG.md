@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.3 (2026-10-22)
+
+- **DuckDB 2.0 works, and the cap is gone.** The store reads single rows to the end (DuckDB 2.0 refused to register a table while a result read with `fetchone()` was open), and the UK benchmark's SQL uses the `lambda x: ...` syntax, the only one DuckDB 2.0 accepts by default. Tested on DuckDB 1.3.0, 1.5.6 and 2.0.0.
+- **CI tests both ends of the dependency ranges.** A job resolves the newest versions the ranges allow and another the oldest, ignoring the lock, on every push and weekly, so a dependency release that breaks a fresh install shows up without waiting for one.
+
 ## 0.3.2 (2026-10-22)
 
 - **DuckDB is capped below 2.** DuckDB 2.0.0 refuses to register a table while a query read with `fetchone()` is still open, and the store reads the ledger head that way just before every write: a fresh `pip install thisness==0.3.1` pulled DuckDB 2.0.0 and failed on the first ingest. 0.3.2 installs DuckDB 1.x; support for 2.0 comes in a later release.

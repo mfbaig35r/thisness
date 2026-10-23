@@ -241,6 +241,13 @@ def _arrow(result: duckdb.DuckDBPyConnection) -> pa.Table:
     return fetch()
 
 
+def _first(result: duckdb.DuckDBPyConnection) -> tuple | None:
+    """The first row of a result, or None, read to the end. DuckDB 2.0 counts a result
+    read with ``fetchone()`` as unfinished and refuses ``register`` until it is done."""
+    rows = result.fetchall()
+    return rows[0] if rows else None
+
+
 def _dumps(value: Any) -> str:
     return json.dumps(value, sort_keys=True, ensure_ascii=False)
 
@@ -301,7 +308,7 @@ class DuckDBStore:
             self._con.unregister("_thisness_rows")
 
     def _head(self) -> int:
-        return self._con.execute("SELECT coalesce(max(seq), 0) FROM ledger_events").fetchone()[0]
+        return _first(self._con.execute("SELECT coalesce(max(seq), 0) FROM ledger_events"))[0]
 
     def _append_events(self, events: list[dict[str, Any]]) -> None:
         self._insert("ledger_events", events)
@@ -342,9 +349,7 @@ class DuckDBStore:
             self._con.execute(
                 "CREATE TABLE IF NOT EXISTS meta (key VARCHAR PRIMARY KEY, value VARCHAR NOT NULL)"
             )
-            row = self._con.execute(
-                "SELECT value FROM meta WHERE key = 'schema_version'"
-            ).fetchone()
+            row = _first(self._con.execute("SELECT value FROM meta WHERE key = 'schema_version'"))
             current = int(row[0]) if row else 0
             migrations = resources.files("thisness.storage.duckdb") / "migrations"
             for path in sorted(migrations.iterdir(), key=lambda p: p.name):
@@ -363,7 +368,7 @@ class DuckDBStore:
                     )
 
     def schema_version(self) -> int:
-        row = self._con.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+        row = _first(self._con.execute("SELECT value FROM meta WHERE key = 'schema_version'"))
         return int(row[0]) if row else 0
 
     def head_seq(self) -> int:
@@ -1083,9 +1088,9 @@ class DuckDBStore:
             raise ValueError("close_run sets proposed or abandoned")
         event = EventType.RUN_PROPOSED if status == "proposed" else EventType.RUN_ABANDONED
         with self._transaction():
-            current = self._con.execute(
-                "SELECT status FROM runs WHERE run_id = ?", [run_id]
-            ).fetchone()
+            current = _first(
+                self._con.execute("SELECT status FROM runs WHERE run_id = ?", [run_id])
+            )
             if current is None:
                 raise NotFound(f"run {run_id}")
             if current[0] in ("committed", "abandoned"):
@@ -1687,19 +1692,23 @@ class _Reader:
         return out
 
     def load_entity(self, entity_id: str) -> EntityRow | None:
-        row = self._con.execute(
-            "SELECT entity_id, entity_type, state, version, created_seq, retired_seq, "
-            "merged_into FROM entities WHERE entity_id = ?",
-            [entity_id],
-        ).fetchone()
+        row = _first(
+            self._con.execute(
+                "SELECT entity_id, entity_type, state, version, created_seq, retired_seq, "
+                "merged_into FROM entities WHERE entity_id = ?",
+                [entity_id],
+            )
+        )
         return None if row is None else EntityRow(*row)
 
     def load_open_membership(self, observation_id: str) -> MembershipRow | None:
-        row = self._con.execute(
-            "SELECT membership_id, observation_id, entity_id, basis_decision_id, valid_from_seq "
-            "FROM memberships WHERE observation_id = ? AND valid_to_seq IS NULL",
-            [observation_id],
-        ).fetchone()
+        row = _first(
+            self._con.execute(
+                "SELECT membership_id, observation_id, entity_id, basis_decision_id, valid_from_seq "
+                "FROM memberships WHERE observation_id = ? AND valid_to_seq IS NULL",
+                [observation_id],
+            )
+        )
         return None if row is None else MembershipRow(*row)
 
     def load_entity_members(self, entity_id: str) -> list[MembershipRow]:
@@ -1711,33 +1720,39 @@ class _Reader:
         return [MembershipRow(*r) for r in rows]
 
     def load_observation_type(self, observation_id: str) -> str | None:
-        row = self._con.execute(
-            "SELECT entity_type FROM observations WHERE observation_id = ?", [observation_id]
-        ).fetchone()
+        row = _first(
+            self._con.execute(
+                "SELECT entity_type FROM observations WHERE observation_id = ?", [observation_id]
+            )
+        )
         return None if row is None else row[0]
 
     def relationship_is_open(self, relationship_id: str) -> bool | None:
-        row = self._con.execute(
-            "SELECT valid_to_seq IS NULL FROM relationships WHERE relationship_id = ?",
-            [relationship_id],
-        ).fetchone()
+        row = _first(
+            self._con.execute(
+                "SELECT valid_to_seq IS NULL FROM relationships WHERE relationship_id = ?",
+                [relationship_id],
+            )
+        )
         return None if row is None else bool(row[0])
 
     def review_status(self, review_id: str) -> str | None:
-        row = self._con.execute(
-            "SELECT status FROM review_items WHERE review_id = ?", [review_id]
-        ).fetchone()
+        row = _first(
+            self._con.execute("SELECT status FROM review_items WHERE review_id = ?", [review_id])
+        )
         return None if row is None else row[0]
 
     def run_status(self, run_id: str) -> str | None:
-        row = self._con.execute("SELECT status FROM runs WHERE run_id = ?", [run_id]).fetchone()
+        row = _first(self._con.execute("SELECT status FROM runs WHERE run_id = ?", [run_id]))
         return None if row is None else row[0]
 
     def constraint_is_open(self, constraint_id: str) -> bool | None:
-        row = self._con.execute(
-            "SELECT valid_to_seq IS NULL FROM pair_constraints WHERE constraint_id = ?",
-            [constraint_id],
-        ).fetchone()
+        row = _first(
+            self._con.execute(
+                "SELECT valid_to_seq IS NULL FROM pair_constraints WHERE constraint_id = ?",
+                [constraint_id],
+            )
+        )
         return None if row is None else bool(row[0])
 
     def load_cannot_links(self, observation_ids: list[str]) -> list[tuple[str, str, str]]:

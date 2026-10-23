@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Weekly, so a dependency release that breaks a fresh install shows up without a push.
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
 
 env:
   # Resolution must not depend on set or dict iteration order. A fixed seed makes
@@ -39,3 +43,27 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: uv sync --dev
       - run: uv run pytest --cov --cov-report=term-missing
+
+  dependencies:
+    name: Tests (${{ matrix.name }} dependencies)
+    # The lock pins one version of each dependency. A fresh install gets the newest
+    # the ranges allow, and an old environment may hold the oldest: DuckDB 2.0.0 broke
+    # 0.3.1 installs while the locked 1.5.6 kept this workflow green. Resolve each end
+    # of the ranges fresh, ignoring the lock.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: newest
+            sync: --upgrade
+          - name: oldest
+            sync: --resolution lowest-direct
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --dev ${{ matrix.sync }}
+      - run: uv pip list | grep -iE '^(duckdb|pyarrow|pydantic|rapidfuzz) '
+      - run: uv run --no-sync pytest

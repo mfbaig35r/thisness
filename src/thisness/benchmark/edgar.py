@@ -22,6 +22,7 @@ from typing import Any
 
 from thisness.benchmark.organizations import _typo
 from thisness.normalize.person import NAME_GROUPS
+from thisness.storage.duckdb.store import _first
 
 CACHE = Path.home() / ".cache" / "thisness" / "edgar"
 MIN_CONFIDENCE = 0.85  # edgar-persons-pool's individual confidence
@@ -75,9 +76,9 @@ def stage(store: Path, db: Path = CACHE / "edgar.duckdb", *,
     try:
         con.execute(f"ATTACH '{Path(store).resolve()}' AS src (READ_ONLY)")
         con.execute(_STAGE.replace("$min_confidence", str(float(min_confidence))))
-        version = con.execute(
-            "SELECT value FROM src.pipeline_state WHERE key = 'classifier_version'"
-        ).fetchone()
+        version = _first(
+            con.execute("SELECT value FROM src.pipeline_state WHERE key = 'classifier_version'")
+        )
         con.execute("CREATE OR REPLACE TABLE meta (key VARCHAR, value VARCHAR)")
         con.executemany("INSERT INTO meta VALUES (?, ?)", [
             ("source_store", str(Path(store).resolve())),
@@ -669,7 +670,7 @@ def make_fixture(db: Path = CACHE / "edgar.duckdb", out: Path = FIXTURE, *,
         for table in TABLES[:-1]:
             con.execute(f"COPY (SELECT * FROM {table} WHERE cik IN (SELECT cik FROM pick) "
                         f"ORDER BY ALL) TO '{out / (table + '.parquet')}' (FORMAT parquet)")  # fmt: skip
-        version = con.execute("SELECT value FROM meta WHERE key = 'classifier_version'").fetchone()
+        version = _first(con.execute("SELECT value FROM meta WHERE key = 'classifier_version'"))
     finally:
         con.close()
     (out / "README.md").write_text(
