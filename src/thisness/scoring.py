@@ -10,6 +10,7 @@ evidence records. Edge classes and consensus are applied later (design 01).
 from __future__ import annotations
 
 import hashlib
+from array import array
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from datetime import datetime
 from typing import Any, overload
@@ -26,19 +27,31 @@ from thisness.training import EMPTY, pattern
 class ScoredRows(Sequence[Mapping[str, Any]]):
     """The rows of a scored table, read by index without turning the table into one
     dict per pair (design 10 §3.2). A column becomes a Python list the first time it is
-    read; columns nobody reads stay in Arrow."""
+    read; columns nobody reads stay in Arrow. ``columns`` supplies columns the caller
+    already holds as lists, in row order, so they are not copied."""
 
-    def __init__(self, table: pa.Table) -> None:
+    def __init__(self, table: pa.Table, columns: Mapping[str, list[Any]] | None = None) -> None:
         self.table = table
         self.names = tuple(table.column_names)
-        self._columns: dict[str, list[Any]] = {}
+        self._columns: dict[str, Sequence[Any]] = dict(columns or {})
+        for name, values in self._columns.items():
+            if name not in self.names or len(values) != table.num_rows:
+                raise ValueError(f"column {name!r} does not match the table")
 
-    def column(self, name: str) -> list[Any]:
+    def column(self, name: str) -> Sequence[Any]:
         values = self._columns.get(name)
         if values is None:
             if name not in self.names:
                 raise KeyError(name)
-            values = self._columns[name] = self.table.column(name).to_pylist()
+            column = self.table.column(name)
+            if pa.types.is_float64(column.type) and column.null_count == 0:
+                # Eight bytes a value instead of a float object; reads give the same floats.
+                values = array("d")
+                for part in column.chunks:
+                    values.extend(part.to_pylist())
+            else:
+                values = column.to_pylist()
+            self._columns[name] = values
         return values
 
     def __len__(self) -> int:

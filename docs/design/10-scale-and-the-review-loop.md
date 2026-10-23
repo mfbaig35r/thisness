@@ -1,6 +1,6 @@
 # Design 10: scale, and the review loop
 
-Status: accepted 2026-10-18, with the decisions of section 7 as proposed. Steps 1 and 2 done (§10.1, §10.2).
+Status: accepted 2026-10-18, with the decisions of section 7 as proposed. Steps 1 to 3 done (§10.1 to §10.3); step 3 closed at 217,337 records and 10.7 GB, with decisions 7 and 8 deferred.
 
 Builds on: design 03 (consensus, §9 to §11), design 04 (reviews, §2.4; labels from reviews, §2.7), design 05 (the review assistant, §5), design 07 §13.4 (scale on real organizations) and design 09 §11.4 and §11.5 (the assistant and scale on real people), as of 0.3.1 (commit 0309faf).
 
@@ -162,6 +162,8 @@ Part B does not wait for part A beyond step 1: bulk acceptance at 46,565 records
 4. **Who accepts in bulk.** Proposed: a person, named as the actor of every accepted review, with the model's recommendation linked. Not an unattended model decision: that is `model_role="decide"`, which stays per profile as now.
 5. **Default kinds to accept.** Proposed: organizations "same", "related", "different"; people and taxa none.
 6. **Labels.** Proposed: calibrated thresholds and triage, behind the leverage experiment; semi-supervised EM not now.
+7. **A benchmark above 217,337 records** (added at step 3). The UK benchmark cannot reach 250,000 without companies that have no LEI. Deferred 2026-10-22: 217,337 is enough to close the scale step.
+8. **Consensus on integer indexes, and skipping teardown** (added at step 3), to meet 8 GB at 217,337 records. Deferred 2026-10-22 until a real list needs it; the review loop (steps 4 and 5) comes first.
 
 ## 8. Risks
 
@@ -228,4 +230,44 @@ Wall time of the whole command, start-up and benchmark generation included.
 **DuckDB's `memory_limit` changes nothing here,** so there is no setting for it (§3.3): at 46,565 records the peak footprint is 3.24 GB with no limit, 3.21 GB at 2 GB and 3.18 GB at 1 GB, and the time 81 s in every case. A smaller write chunk (10,000) changed neither time (80 s) nor peak.
 
 **What is left, for step 3.** Of the remaining peak, the run's per-pair Python state is the part that grows: the columns read as lists (ids, weights, classes), the folded pairs, the judgments' citations (1.3 million evidence id strings) and the candidate pairs. At 250,000 records and perhaps 9 million pairs these grow about tenfold, so step 3 starts by measuring candidate pairs at that size before deciding which of them must become arrays.
+
+### 10.3 Step 3: towards 250,000 records
+
+**The benchmark tops out at 217,337 records.** Targets are drawn from GLEIF entities joined to Companies House, and there are 62,569 of them; `--size 62000` uses nearly all of them. Sizes and candidate pairs (generation, ingest and candidate generation only):
+
+| `--size` | Records | Candidate pairs |
+|---|---|---|
+| 6,400 | 46,565 | 790,011 |
+| 12,800 | 86,136 | 2,012,390 |
+| 35,000 | 188,190 | 4,861,683 |
+| 62,000 | 217,337 | 5,484,798 |
+
+Pair growth slows towards linear, as the block caps promise: about 26 pairs per record at 86,136 and 25 at 217,337. 250,000 records would need targets without an LEI, which changes the benchmark (decision 7).
+
+**What was fixed**, each checked identical on the five runs of §10.1:
+
+- The first pass of a two-pass common-value adjustment kept its folded pairs alive through the second pass (`_, _, _, _, first = ...` binds `_` to them). Now only its clusters are kept.
+- The candidate lists lived until the run returned; they are released once the scored pair list exists.
+- The scored pairs are two id lists sharing one string per observation, and the scored rows reuse them as their id columns: before, each structure held its own copy of every id, one per pair.
+- Float columns read from the scored table are `array("d")`, eight bytes a value instead of a float object.
+- Evidence and judgments are written 10,000 pairs at a time (was 50,000), and the last chunk no longer outlives the loop.
+
+Two tries made no difference and were dropped: scoring into Arrow in chunks, and DuckDB's `memory_limit` with a file-backed store (4.69 GB against 4.64 GB at 86,136 records).
+
+**Results**, file-backed store (`--save`), as a user's store is:
+
+| Records | Pairs | Time | Peak footprint |
+|---|---|---|---|
+| 86,136, before step 3 | 2,012,390 | 188 s | 6.28 GB |
+| 86,136 | 2,012,390 | 200 s | 3.77 GB |
+| 217,337, part-way | 5,484,798 | 515 s | 12.7 GB |
+| 217,337 | 5,484,798 | 532 s | 10.7 GB |
+
+At 217,337 records: precision .9953, recall .9374, 10,094 reviews. Time is well inside the target (30 minutes); memory is not (8 GB). An in-memory store adds the database itself: 8.93 GB against 6.28 GB at 86,136 records before these fixes.
+
+**How memory is spent now.** tracemalloc puts Python's own peak at 2.93 GB of the 3.85 GB footprint at 86,136 records, so what remains is Python's per-pair state: the folded node pairs (a dict entry, a key tuple and an index list per pair), the class of every pair as a tuple, the evidence and decision ids (one string each, 1.8 million at 46,565 records), and consensus's own maps. Each is small per pair; together they are about 1.9 KB a pair. Reaching 8 GB at 217,337 records needs about a third less, which means consensus working on integer node indexes and arrays rather than dicts of string pairs: a change to `edges.aggregate`, `ValidatedComponents` and `_plan` together, not another trim (decision 8).
+
+**Measuring needs care.** The footprint varies from run to run: two runs of the same code read 3.78 and 3.76 GB, but a run straight after a batch of other runs read 5.17 GB. Every number above is the lower of at least two runs or was checked against a repeat.
+
+**Exit under memory pressure is slow.** A 217,337-record run finished resolving at 532 s and took 77 more minutes to exit while the test suite ran beside it and the machine swapped: Python freeing about 10 GB of objects that had been paged out. Alone, the same run exited at once. A run near the machine's memory pays this; the CLI could skip the interpreter's teardown once its output is written (decision 8).
 

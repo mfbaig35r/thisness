@@ -129,7 +129,7 @@ class Thisness:
         tf_min_entities: int = 200,
         adjudicator: Adjudicator | None = None,
         assistant: Any = None,
-        write_chunk: int = 50_000,
+        write_chunk: int = 10_000,
     ) -> None:
         self.ids = ids or IdFactory()
         self.clock = clock or (lambda: datetime.now(UTC))
@@ -394,6 +394,15 @@ class Thisness:
                 for obs in obs_set:
                     extra.add((obs, rep) if obs < rep else (rep, obs))
         all_pairs = sorted(set(pairs) | extra)
+        candidate_pairs = len(pairs)
+        del candidates, pairs  # nothing below needs them
+        # The scored pairs as two id lists sharing one string per observation, which the
+        # scored rows reuse as their id columns: one copy of each id, not one per pair
+        # per structure (design 10 §10.3).
+        canon: dict[str, str] = {}
+        pair_left = [canon.setdefault(a, a) for a, _ in all_pairs]
+        pair_right = [canon.setdefault(b, b) for _, b in all_pairs]
+        del all_pairs, canon
         features = store.features(sorted(scope_set | set(entity_of)))
 
         states = store.entity_states(entity_nodes)
@@ -421,8 +430,9 @@ class Thisness:
 
         def consensus_pass(tables, t_high=t_high, adjudicate=False):
             nonlocal adjudication_stage
-            scored = score_pairs(profile, model, features, all_pairs, tables=tables)
-            rows = ScoredRows(scored)
+            scored = score_pairs(profile, model, features, zip(pair_left, pair_right, strict=True),
+                                 tables=tables)  # fmt: skip
+            rows = ScoredRows(scored, columns={"left_id": pair_left, "right_id": pair_right})
             classes = [
                 (
                     r["left_id"],
@@ -490,9 +500,12 @@ class Thisness:
             elif len(scope) > 0.5 * total:
                 mode = "two-pass"
                 if first_clusters is None:  # one first pass serves every adjustment
-                    _, _, _, _, first = consensus_pass({}, t_count)
+                    # Only its clusters are kept: holding the pass's scored pairs through
+                    # the second pass doubled the run's peak memory (design 10 §10.3).
+                    first = consensus_pass({}, t_count)[-1]
                     first_clusters = [[m for n in c.members for m in (members.get(n) or [n])]
                                       for c in first.clusters]  # fmt: skip
+                    del first
                 frequencies, floor = frequencies_from_clusters(first_clusters, features, tf.feature)
             else:
                 mode = "store"
@@ -544,6 +557,7 @@ class Thisness:
                     k += 1
                 starts.append(len(evidence_ids))
             store.record_evidence(items)
+        items = chunk = kept = None  # the last chunk would otherwise outlive the loop
         left_ids, right_ids = rows.column("left_id"), rows.column("right_id")
 
         def cited(pair: tuple[str, str]) -> list[tuple[str | None, str]]:
@@ -622,7 +636,7 @@ class Thisness:
         )
         stats = {
             "scope": len(scope),
-            "candidate_pairs": len(pairs),
+            "candidate_pairs": candidate_pairs,
             "representative_pairs": len(extra),
             "scored_pairs": len(rows),
             "recorded_judgments": recorded_judgments + len(llm_judgments),

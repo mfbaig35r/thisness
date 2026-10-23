@@ -160,3 +160,17 @@ def test_scored_rows_read_like_dicts():
     assert len(rows) == 2 and rows[1]["weight"] == -2.0 and rows[-1]["left_id"] == "b"
     assert dict(rows[0]) == {"left_id": "a", "weight": 1.5}
     assert rows[0].get("missing") is None and [r["left_id"] for r in rows] == ["a", "b"]
+
+
+def test_scored_rows_reuse_supplied_columns():
+    import pyarrow as pa
+    import pytest
+
+    from thisness.scoring import ScoredRows
+
+    ids = ["a", "b"]
+    rows = ScoredRows(pa.table({"left_id": ["a", "b"], "weight": [1.0, 2.0]}),
+                      columns={"left_id": ids})  # fmt: skip
+    assert rows.column("left_id") is ids and rows[1]["left_id"] == "b"
+    with pytest.raises(ValueError):
+        ScoredRows(pa.table({"left_id": ["a"]}), columns={"left_id": ["a", "b"]})
