@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2 (2026-10-22)
+
+- **DuckDB is capped below 2.** DuckDB 2.0.0 refuses to register a table while a query read with `fetchone()` is still open, and the store reads the ledger head that way just before every write: a fresh `pip install thisness==0.3.1` pulled DuckDB 2.0.0 and failed on the first ingest. 0.3.2 installs DuckDB 1.x; support for 2.0 comes in a later release.
+- **Faster, smaller runs** (design 10 steps 1 and 2). Four scaling defects are gone (finding each cluster's strong edges, the model's config digest, boundary grouping, registering the canonicalizer), and evidence and judgments are written in chunks of `write_chunk` pairs (default 50,000). 46,565 records: 81 s and a 3.24 GB peak footprint, from 441 s and 14.38 GB. Output is identical, checked with `python -m thisness.benchmark store-digest A B`.
+
 ## 0.3.1 (2026-10-18)
 
 - **The default model is gpt-6-luna**, the model behind every published measurement. `--model` and `--group-model` now follow the provider: gpt-6-luna for `openai`, `claude-sonnet-5` and `claude-haiku-4-5` for `anthropic`. Before, `--provider openai` without `--model` sent a Claude model name to OpenAI. `recommend` and `labels` default to `--provider openai`. `Adjudicator`, `ReviewAssistant`, `LabelAssistant` and `NameOnlyPlan` default to gpt-6-luna. The Anthropic provider is unchanged and not measured.
