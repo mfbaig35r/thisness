@@ -23,7 +23,7 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 
 from thisness.assistant import review_labels
-from thisness.core.decisions import PairJudgment
+from thisness.core.decisions import Actor, PairJudgment
 from thisness.engine import Thisness
 from thisness.storage.errors import NotFound, ThisnessError
 
@@ -306,8 +306,12 @@ def panel_decision(request: Request, decision_id: str) -> HTMLResponse:
 # -- reviews ---------------------------------------------------------------------------------
 
 
+REVIEWER = Actor(kind="human", id="reviewer")  # who answers from the Workbench
+
+
 @router.get("/reviews", response_class=HTMLResponse)
-def reviews(request: Request, kind: str | None = None) -> HTMLResponse:
+def reviews(request: Request, kind: str | None = None, accepted: int | None = None,
+            left: int | None = None) -> HTMLResponse:  # fmt: skip
     engine = engine_of(request)
     summaries = engine.reviews(kind or None)
     kinds = Counter(s.review.kind for s in engine.reviews())
@@ -316,6 +320,8 @@ def reviews(request: Request, kind: str | None = None) -> HTMLResponse:
         recommendations = engine.recommendations(s.review.review_id)
         if recommendations:
             suggestion[s.review.review_id] = recommendations[-1].resolution
+    # What accepting in bulk would do, with each profile's kinds (design 10 §4.2).
+    bulk = engine.accept_recommendations(actor=REVIEWER, dry_run=True) if suggestion else None
     return render(
         request,
         "reviews.html",
@@ -323,7 +329,21 @@ def reviews(request: Request, kind: str | None = None) -> HTMLResponse:
         kind=kind or "",
         kinds=kinds,
         suggestion=suggestion,
+        bulk=bulk,
+        accepted=accepted,
+        left=left,
     )
+
+
+@router.post("/reviews/accept")
+def accept_suggestions(request: Request) -> Response:
+    engine = engine_of(request)
+    try:
+        result = engine.accept_recommendations(actor=REVIEWER)
+    except ThisnessError as exc:
+        return _error(str(exc))
+    accepted, left = sum(result.accepted.values()), sum(result.skipped.values())
+    return _redirect(request, f"/reviews?accepted={accepted}&left={left}")
 
 
 @router.get("/reviews/{review_id}", response_class=HTMLResponse)

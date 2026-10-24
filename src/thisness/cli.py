@@ -250,9 +250,30 @@ def cmd_dossier(args: argparse.Namespace) -> int:
 
 def cmd_reviews(args: argparse.Namespace) -> int:
     engine = _engine(args.store)
+    if args.action == "accept":
+        return _accept_suggestions(args, engine)
     for s in engine.reviews():
         print(f"{s.review.review_id}  {s.review.kind:<8} {s.observations:>6} observations  "
               f"{len(s.review.members):>4} records")  # fmt: skip
+    return 0
+
+
+def _accept_suggestions(args: argparse.Namespace, engine: Thisness) -> int:
+    """Accept open suggestions in bulk (design 10 §4.2): a person's answers, one per
+    review, each reversible."""
+    import getpass
+
+    from thisness.core.decisions import Actor
+
+    resolutions = args.resolution.split(",") if args.resolution else None
+    result = engine.accept_recommendations(
+        actor=Actor(kind="human", id=args.actor or getpass.getuser()),
+        entity_type=args.type, resolutions=resolutions, dry_run=args.dry_run)  # fmt: skip
+    verb = "would accept" if result.dry_run else "accepted"
+    accepted = ", ".join(f"{k} {v}" for k, v in sorted(result.accepted.items())) or "none"
+    print(f"{verb} {sum(result.accepted.values())} suggestions ({accepted})")
+    for why, n in sorted(result.skipped.items()):
+        print(f"  left open: {n} ({why})")
     return 0
 
 
@@ -501,6 +522,9 @@ def cmd_eval(args: argparse.Namespace) -> int:
     if args.messy and not args.names_only:
         print("--messy applies to --names-only", file=sys.stderr)
         return 1
+    if args.accept and args.assistant == "none":
+        print("--accept accepts the assistant's suggestions: add --assistant", file=sys.stderr)
+        return 1
     if args.plan == "rewrite" and (args.save or args.type != "organization"):
         print("--plan rewrite scores organizations' names and keeps no store", file=sys.stderr)
         return 1
@@ -577,8 +601,26 @@ def _eval_assistant(args: argparse.Namespace, engine, truth, bench) -> dict:
                        policy=LLMPolicy(budget_usd=args.budget, concurrency=args.concurrency))  # fmt: skip
     assistant = ReviewAssistant(client, model=args.model)
     results = engine.recommend_open(limit=1_000_000, assistant=assistant)
-    return {**recommendation_accuracy(engine, truth, results), "calls": client.calls,
-            "spent_usd": round(client.spent_usd, 4)}  # fmt: skip
+    out = {**recommendation_accuracy(engine, truth, results), "calls": client.calls,
+           "spent_usd": round(client.spent_usd, 4)}  # fmt: skip
+    if args.accept:
+        out["accepted"] = _eval_accept(engine, truth, bench)
+    return out
+
+
+def _eval_accept(engine, truth, bench) -> dict:
+    """Accept the suggestions each profile accepts in bulk, then measure what is left
+    (design 10 §4.2): precision and recall after, and the reviews still open."""
+    from thisness.benchmark.evaluate import cluster_metrics
+    from thisness.core.decisions import Actor
+
+    result = engine.accept_recommendations(actor=Actor(kind="human", id="eval"))
+    after = cluster_metrics(engine.store.entities_of(list(truth)), truth, bench.kind)
+    left = len(engine.reviews())
+    return {"accepted": result.accepted, "skipped": result.skipped, "reviews_left": left,
+            "reviews_left_per_1000": round(1000 * left / len(truth), 1),
+            "b3_precision": round(after.b3_precision, 4), "b3_recall": round(after.b3_recall, 4),
+            "false_merge_clusters": after.false_merge_clusters}  # fmt: skip
 
 
 def parser() -> argparse.ArgumentParser:
@@ -663,7 +705,15 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--as-of", type=int, default=None, help="the mapping as of this ledger seq")
     s.set_defaults(func=cmd_export)
 
-    s = sub.add_parser("reviews", help="open reviews, most impactful first")
+    s = sub.add_parser("reviews", help="open reviews, most impactful first; or accept "
+                                        "suggestions in bulk")  # fmt: skip
+    s.add_argument("action", nargs="?", default="list", choices=["list", "accept"])
+    s.add_argument("--type", choices=sorted(PROFILES), help="accept: only this type")
+    s.add_argument("--resolution", default=None,
+                   help="accept: kinds to accept, comma-separated (same, different, related, "
+                        "groups); default the profile's")  # fmt: skip
+    s.add_argument("--dry-run", action="store_true", help="accept: count, change nothing")
+    s.add_argument("--actor", default=None, help="accept: who accepts (default: your login)")
     s.set_defaults(func=cmd_reviews)
 
     s = sub.add_parser("check", help="run the invariant suite over the store")
@@ -699,6 +749,9 @@ def parser() -> argparse.ArgumentParser:
     )
     g.add_argument("--oracle-error", type=float, default=0.0)
     g.add_argument("--oracle-fold", type=float, default=0.0)
+    s.add_argument("--accept", action="store_true",
+                   help="with --assistant: accept the suggestions each profile accepts in bulk, "
+                        "then report what is left (design 10 §4.2)")  # fmt: skip
     s.add_argument("--assistant", default="none", choices=["none", "oracle", "anthropic", "openai"],
                    help="after the run, the review assistant answers every open review and "
                         "its suggestions are scored against the truth")  # fmt: skip

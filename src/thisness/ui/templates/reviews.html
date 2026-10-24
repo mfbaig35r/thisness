@@ -7,8 +7,16 @@
   <span class="view">{{ icon("list-check") }} Open <span class="light">· {{ summaries|length }}</span></span>
   <a class="filter {% if not kind %}on{% endif %}" href="/reviews">All</a>
   {% for k, n in kinds.most_common() %}<a class="filter {% if kind == k %}on{% endif %}" href="?kind={{ k }}">{{ k|capitalize }} <span class="light">{{ n }}</span></a>{% endfor %}
-  <span class="spacer"></span><span class="light">Most observations affected first</span>
+  <span class="spacer"></span>
+  {% if bulk and bulk.accepted %}{% set n = bulk.accepted.values()|sum %}
+  <form method="post" action="/reviews/accept" class="inline-form">
+    <span class="light">{% for k, v in bulk.accepted|dictsort %}{{ k }} {{ v }}{% if not loop.last %} · {% endif %}{% endfor %}</span>
+    <button class="btn small" type="submit" title="Accept the model's suggestion for these reviews: one answer each, recorded as yours and reversible">{{ icon("sparkles", 14) }} Accept {{ n }} suggestion{{ "" if n == 1 else "s" }}</button>
+  </form>
+  {% endif %}
+  <span class="light">Most observations affected first</span>
 </div>
+{% if accepted is not none %}<div class="viewbar"><span>{{ icon("circle-check", 14) }} Accepted {{ accepted }} suggestion{{ "" if accepted == 1 else "s" }}.{% if left %} <span class="light">{{ left }} left open: not a kind accepted in bulk, unsure, without a suggestion, or changed since.</span>{% endif %}</span></div>{% endif %}
 {% if summaries %}
 <table class="records">
   <thead><tr><th>{{ icon("message-question", 14) }} Question</th><th>{{ icon("circle-dashed", 14) }} Kind</th>

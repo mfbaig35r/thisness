@@ -292,3 +292,85 @@ def resolve(
     changes = ChangeSet(base_seq=store.head_seq(), ops=tuple(ops),
                         read_set=ReadSet(entity_ids=frozenset(entities)))  # fmt: skip
     return store.commit(changes, actor=decision.actor, canonicalizer=engine.canonicalizer)
+
+
+# -- accepting suggestions in bulk (design 10 §4.2) ---------------------------------------
+
+BULK_REASON = "accepted the model's suggestion in bulk"
+
+
+@dataclass(frozen=True)
+class BulkAcceptance:
+    """What a bulk acceptance did, or would do on a dry run: reviews closed by the kind of
+    suggestion, and reviews left open by why."""
+
+    accepted: dict[str, int]
+    skipped: dict[str, int]
+    dry_run: bool
+
+
+def _entity_type_of(engine: Thisness, review: ReviewItem) -> str:
+    if review.run_id is not None:
+        return engine.store.run(review.run_id).entity_type
+    node = review.members[0]
+    if _is_observation(node):
+        return engine.store.observations([node])[0].entity_type
+    return engine.store.entity(node).entity_type
+
+
+def accept_suggestions(
+    engine: Thisness,
+    *,
+    actor: Actor,
+    entity_type: str | None = None,
+    resolutions: Sequence[str] | None = None,
+    dry_run: bool = False,
+) -> BulkAcceptance:
+    """Accept the latest suggestion of every open review whose kind is accepted in bulk:
+    ``resolutions``, or else the profile's ``accept_suggestions``. Each acceptance is an
+    ordinary answer, as the Workbench gives it: one review decision with the person as
+    its actor and the suggestion linked, reversible like any other. A suggestion is
+    skipped when its review changed after it was made: a ledger event touched one of
+    the review's entities after the suggestion, or an earlier acceptance in the same
+    batch did."""
+    accepted: dict[str, int] = {}
+    skipped: dict[str, int] = {}
+    touched: set[str] = set()
+    changed_at = engine.store.entity_changed_at()
+
+    def skip(why: str) -> None:
+        skipped[why] = skipped.get(why, 0) + 1
+
+    for summary in engine.reviews():
+        review = summary.review
+        kind = _entity_type_of(engine, review)
+        if entity_type is not None and kind != entity_type:
+            continue
+        allowed = set(resolutions if resolutions is not None
+                      else engine.profiles[kind].accept_suggestions)  # fmt: skip
+        recommendations = engine.recommendations(review.review_id)
+        if not recommendations:
+            skip("no suggestion")
+            continue
+        rec = recommendations[-1]
+        if rec.resolution == "unsure":
+            skip("unsure")
+            continue
+        if rec.resolution not in allowed:
+            skip(f"{rec.resolution}, not accepted in bulk")
+            continue
+        entities = set(_entities_of_nodes(engine, review.members).values())
+        later = any(at > rec.created_at for e in entities if (at := changed_at.get(e)))
+        if later or entities & touched:
+            skip("changed since the suggestion")
+            continue
+        touched |= entities
+        accepted[rec.resolution] = accepted.get(rec.resolution, 0) + 1
+        if dry_run:
+            continue
+        resolve(engine, review.review_id, rec.resolution,
+                groups=rec.groups if rec.resolution == "groups" else None,
+                relation=rec.relation, reason=BULK_REASON, actor=actor,
+                recommendation_id=rec.decision_id)  # fmt: skip
+        touched |= set(_entities_of_nodes(engine, review.members).values())
+    return BulkAcceptance(accepted, skipped, dry_run)

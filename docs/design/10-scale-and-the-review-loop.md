@@ -1,6 +1,6 @@
 # Design 10: scale, and the review loop
 
-Status: accepted 2026-10-18, with the decisions of section 7 as proposed. Steps 1 to 3 done (§10.1 to §10.3); step 3 closed at 217,337 records and 10.7 GB, with decisions 7 and 8 deferred.
+Status: accepted 2026-10-18, with the decisions of section 7 as proposed. Steps 1 to 4 done (§10.1 to §10.4); step 3 closed at 217,337 records and 10.7 GB, with decisions 7 and 8 deferred; decision 5 revised at step 4.
 
 Builds on: design 03 (consensus, §9 to §11), design 04 (reviews, §2.4; labels from reviews, §2.7), design 05 (the review assistant, §5), design 07 §13.4 (scale on real organizations) and design 09 §11.4 and §11.5 (the assistant and scale on real people), as of 0.3.1 (commit 0309faf).
 
@@ -160,7 +160,7 @@ Part B does not wait for part A beyond step 1: bulk acceptance at 46,565 records
 2. **Parallel scoring.** Proposed: not in this design unless step 3 shows one core is the limit at 250,000 records.
 3. **Evidence storage stays one row per comparison per pair.** Writing it in chunks keeps the schema; moving evidence into SQL (unpivoting the scored table inside DuckDB) is the fallback only if chunking misses the memory target.
 4. **Who accepts in bulk.** Proposed: a person, named as the actor of every accepted review, with the model's recommendation linked. Not an unattended model decision: that is `model_role="decide"`, which stays per profile as now.
-5. **Default kinds to accept.** Proposed: organizations "same", "related", "different"; people and taxa none.
+5. **Default kinds to accept.** Proposed: organizations "same", "related", "different"; people and taxa none. Revised at step 4 (§10.4): organizations "related" and "different" only, the kinds that never merge.
 6. **Labels.** Proposed: calibrated thresholds and triage, behind the leverage experiment; semi-supervised EM not now.
 7. **A benchmark above 217,337 records** (added at step 3). The UK benchmark cannot reach 250,000 without companies that have no LEI. Deferred 2026-10-22: 217,337 is enough to close the scale step.
 8. **Consensus on integer indexes, and skipping teardown** (added at step 3), to meet 8 GB at 217,337 records. Deferred 2026-10-22 until a real list needs it; the review loop (steps 4 and 5) comes first.
@@ -270,4 +270,34 @@ At 217,337 records: precision .9953, recall .9374, 10,094 reviews. Time is well 
 **Measuring needs care.** The footprint varies from run to run: two runs of the same code read 3.78 and 3.76 GB, but a run straight after a batch of other runs read 5.17 GB. Every number above is the lower of at least two runs or was checked against a repeat.
 
 **Exit under memory pressure is slow.** A 217,337-record run finished resolving at 532 s and took 77 more minutes to exit while the test suite ran beside it and the machine swapped: Python freeing about 10 GB of objects that had been paged out. Alone, the same run exited at once. A run near the machine's memory pays this; the CLI could skip the interpreter's teardown once its output is written (decision 8).
+
+### 10.4 Step 4: reviews per 1,000 records, and accepting in bulk
+
+- **The metric.** `thisness eval` reports reviews per 1,000 records (`Report.reviews_per_1000`, in the summary line and the JSON).
+- **Accepting in bulk** is `Thisness.accept_recommendations(actor, entity_type=None, resolutions=None, dry_run=False)`, `thisness reviews accept [--dry-run] [--resolution ...] [--type ...] [--actor ...]` and "Accept N suggestions" on the Workbench's review queue, which shows what would be accepted by kind. Each acceptance goes through the same `resolve` a person's answer does, as the Workbench gives it ("same", "different" and "related" by resolution, a regrouping by its groups), with the person as actor (the Workbench's is `reviewer`, the command line's the login name), the suggestion linked and `reviews.BULK_REASON` as the reason. `assistant_agreement` counts these apart (`accepted_in_bulk`).
+- **Stale suggestions are skipped.** A suggestion is stale when a ledger event touched one of the review's entities after the suggestion was recorded (`DuckDBStore.entity_changed_at`), or an earlier acceptance in the same batch did.
+- **The profile's kinds** are `ResolutionProfile.accept_suggestions`, outside the profile's identity: they shape a command a person runs, not resolution.
+- `thisness eval --assistant ... --accept` accepts what each profile accepts and reports precision, recall, false merges and reviews left.
+
+**Measured with gpt-6-luna as the assistant** (UK benchmark, identifiers hidden, seed 20261009; cassettes in `~/thisness-demo/cassettes/d10-accept-uk{400,6400}.jsonl`):
+
+| Records | Reviews | Assistant right | "same" | "different" | "related" | Regrouping | Unsure | Cost |
+|---|---|---|---|---|---|---|---|---|
+| 3,507 | 237 | 204 of 230 (89%) | 33 of 33 | 95 of 113 | 26 of 26 | 50 of 58 | 7 | $0.17 |
+| 46,565 | 2,629 | 2,188 of 2,511 (87%) | 297 of 306 | 1,137 of 1,338 | 266 of 270 | 488 of 597 | 98 | $2.00 |
+
+Accepting in bulk, then:
+
+| Records | Accepted | Reviews left | Per 1,000 records | Precision | Recall | False-merge clusters |
+|---|---|---|---|---|---|---|
+| 3,507, none | | 237 | 68 | .9992 | .9116 | 1 |
+| 3,507, "related" and "different" | 139 | 98 | 27.9 | .9992 | .9116 | 1 |
+| 3,507, with "same" | 172 | 65 | 18.5 | .9992 | .9272 | 1 |
+| 46,565, none | | 2,629 | 56 | .9965 | .9339 | 63 |
+| 46,565, "related" and "different" | 1,608 | 1,021 | 21.9 | .9965 | .9339 | 63 |
+| 46,565, with "same" | 1,913 | 716 | 15.4 | .9962 | .9429 | 71 |
+
+**Decision 5 is revised.** At 3,507 records every "same" was right; at 46,565, 9 of 306 merged different companies, 8 more false-merge clusters. By the rule of §8 (a kind with a measured false-merge rate gets no default), organizations accept "related" and "different" by default: those never merge, a wrong one only leaves a match apart, and they close 59% and 61% of reviews. "same" is one flag away for whoever wants its recall (.934 to .943) at that price. The "with same" rows were measured; the default rows were replayed from the same cassettes.
+
+Of the 716 left with "same", 597 were regroupings (82% right) and 98 unsure: the work that stays a person's.
 

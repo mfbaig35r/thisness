@@ -64,6 +64,7 @@ thisness --store demo.duckdb demo && thisness ui demo.duckdb    # try it on synt
 thisness --store people.duckdb demo --type person                # synthetic people
 thisness --store taxa.duckdb demo --type taxon --reference       # real plant names, labelled by WFO
 thisness export mapping > mapping.csv   # every record, its entity and the entity's name
+thisness reviews accept --dry-run        # what accepting the model's suggestions in bulk would close
 ```
 
 Supplier lists and spend extracts work as they are: payment-processor prefixes ("SQ *", "PAYPAL *"), store and reference numbers and ERP notes ("DO NOT USE", "ZZ ") are cleaned before names are compared, and a note becomes the record's status in the mapping. A model can suggest readable names for entities whose records are all in capitals (`thisness labels suggest`), which you accept or clear (design 08).
@@ -87,6 +88,8 @@ The default model is gpt-6-luna, the model behind every measurement below; `--mo
 What the model does is set per profile (`model_role`): for organizations and taxa it decides contested pairs, and its "same" yields to its own "different" or to a cannot-link constraint; for people it only suggests review answers, since measured on people it was both too cautious and too credulous. `--model-role decide|suggest|shadow|off` overrides that for a run. `--record` keeps every exchange in a cassette and `--replay` answers from one, free and offline. Any OpenAI-compatible server works with `--base-url` (and `--local` when it is yours).
 
 Set `--budget`: there is no default limit.
+
+Once the model has suggested answers, `thisness reviews accept` (or "Accept suggestions" on the Workbench's review queue) accepts the kinds a profile allows in bulk, each as your own answer and each reversible. For organizations those are "different" and "related", which never merge anything; "same" is accepted in bulk only when you name it (`--resolution same,related,different`), because on 46,565 records 9 of its 306 suggestions merged different companies. On the UK benchmarks the default closes 59% of reviews at 3,507 records and 61% at 46,565 without changing an entity (design 10 §10.4).
 
 ## How well it works
 

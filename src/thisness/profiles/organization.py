@@ -119,4 +119,8 @@ def organization(version: str = "1") -> ResolutionProfile:
         prompt_hints=HINTS,
         # gpt-6-luna on 805 organizations: R .888 -> .981 for 3 more false-merge clusters.
         model_role="decide",
+        # Kinds that never merge (design 10 §10.4): a wrong "different" or "related"
+        # leaves a match apart. "same" was right 297 of 306 times on 46,565 records and
+        # the other 9 merged different companies, so a person asks for it by name.
+        accept_suggestions=("related", "different"),
     )  # fmt: skip

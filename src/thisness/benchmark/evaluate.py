@@ -138,8 +138,14 @@ class Report:
     seconds: dict[str, float]
     run: dict[str, Any]
 
+    @property
+    def reviews_per_1000(self) -> float:
+        """Reviews per 1,000 records: what a run asks of people (design 10 §4.1)."""
+        records = self.benchmark.get("records") or 0
+        return 1000 * self.reviews_opened / records if records else 0.0
+
     def as_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        return {**asdict(self), "reviews_per_1000": round(self.reviews_per_1000, 1)}
 
     def summary(self) -> str:
         c = self.clusters
@@ -147,7 +153,8 @@ class Report:
             f"{self.benchmark['records']} records: B3 P {c.b3_precision:.4f} R {c.b3_recall:.4f} "
             f"F1 {c.b3_f1:.4f} | false-merge clusters {c.false_merge_clusters} "
             f"(contaminated {c.contaminated}, largest {c.largest_bad_cluster}) | "
-            f"reviews {self.reviews_opened}, {self.review_observations} obs in review | "
+            f"reviews {self.reviews_opened} ({self.reviews_per_1000:.0f} per 1,000 records), "
+            f"{self.review_observations} obs in review | "
             f"candidates: pair recall {self.candidates['pair_recall']:.3f}, connected "
             f"{self.candidates['entity_connectivity']:.3f} | "
             f"T_high {self.run.get('t_high', float('nan')):.1f} | "

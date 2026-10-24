@@ -1055,6 +1055,16 @@ class DuckDBStore:
             out[r["entity_id"]].append(r["observation_id"])
         return out
 
+    def entity_changed_at(self) -> dict[str, datetime]:
+        """When each entity was last touched by a ledger event (design 10 §4.2)."""
+        rows = self._all(
+            "SELECT e AS entity_id, max(recorded_at) AS at FROM ("
+            "SELECT entity_id AS e, recorded_at FROM ledger_events WHERE entity_id IS NOT NULL "
+            "UNION ALL SELECT related_entity_id, recorded_at FROM ledger_events "
+            "WHERE related_entity_id IS NOT NULL) GROUP BY e"
+        )
+        return {r["entity_id"]: r["at"] for r in rows}
+
     def entity_states(self, entity_ids: Sequence[str]) -> dict[str, str]:
         rows = self._by_ids(
             "SELECT entity_id, state FROM entities JOIN _qids ON entity_id = id", entity_ids

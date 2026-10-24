@@ -1049,6 +1049,17 @@ class Thisness:
     def recommendations(self, review_id: str):
         return self.store.recommendations(review_id)
 
+    def accept_recommendations(self, *, actor: Actor, entity_type: str | None = None,
+                               resolutions: Sequence[str] | None = None,
+                               dry_run: bool = False):  # fmt: skip
+        """Accept open suggestions in bulk, the kinds the profile allows unless
+        ``resolutions`` names them (design 10 §4.2). The person is the actor of every
+        answer, and each is reversible like any other."""
+        from thisness.reviews import accept_suggestions
+
+        return accept_suggestions(self, actor=actor, entity_type=entity_type,
+                                  resolutions=resolutions, dry_run=dry_run)  # fmt: skip
+
     def assistant_agreement(self) -> dict[str, Any]:
         """How often reviewers' answers matched the recommendations they were shown."""
         from thisness.assistant import agreement

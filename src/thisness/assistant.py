@@ -220,10 +220,16 @@ def _partition(answer: RecommendationAnswer, current: list[list[str]],
 def agreement(decisions: Sequence[ReviewDecision],
               recommendations: dict[str, ReviewRecommendation]) -> dict[str, Any]:  # fmt: skip
     """How often reviewers' answers matched the recommendation they were shown: the
-    whole grouping, and pair by pair (same group or not)."""
-    exact = pairs = agreed = n = 0
+    whole grouping, and pair by pair (same group or not). Suggestions accepted in bulk
+    are counted apart: they agree by construction (design 10 §4.2)."""
+    from thisness.reviews import BULK_REASON
+
+    exact = pairs = agreed = n = bulk = 0
     by_resolution: dict[str, list[int]] = {}
     for decision in decisions:
+        if decision.reason == BULK_REASON:
+            bulk += 1
+            continue
         rec = recommendations.get(decision.recommendation_id or "")
         if rec is None or rec.groups is None or decision.groups is None:
             continue
@@ -240,6 +246,7 @@ def agreement(decisions: Sequence[ReviewDecision],
                 agreed += (mine[a] == mine[b]) == (theirs[a] == theirs[b])
     return {
         "reviews": n,
+        "accepted_in_bulk": bulk,
         "exact": exact / n if n else None,
         "pairwise": agreed / pairs if pairs else None,
         "exact_by_recommendation": {k: sum(v) / len(v) for k, v in sorted(by_resolution.items())},

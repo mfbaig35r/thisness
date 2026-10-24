@@ -176,6 +176,10 @@ class ResolutionProfile:
     # yielding to its own "different"), or "suggest" answers to reviews for a person to
     # accept. None leaves the adjudicator in shadow mode.
     model_role: Literal["decide", "suggest"] | None = None
+    # The kinds of suggestion a person may accept in bulk for this type (design 10
+    # §4.2), measured per domain like ``model_role``. It shapes a command a person runs,
+    # not resolution, so it is not part of the profile's identity.
+    accept_suggestions: tuple[str, ...] = ()
     # The name-only plan's collapse key (design 05 §6): records whose names reduce to
     # one key are one node. None for the organization key. A plain function of a
     # record's features; its name is part of the profile's identity.
