@@ -563,6 +563,8 @@ def cmd_eval(args: argparse.Namespace) -> int:
                                                   store=args.save or ":memory:")  # fmt: skip
             assisted = (_eval_assistant(args, engine, truth, bench)
                         if args.assistant != "none" else None)  # fmt: skip
+            calibrated = _eval_calibration(args, engine, truth, bench, report) if args.answer \
+                else None  # fmt: skip
             if args.save:
                 engine.store.close()
                 print(f"saved to {args.save}; open it with: thisness ui {args.save}")
@@ -574,7 +576,22 @@ def cmd_eval(args: argparse.Namespace) -> int:
                 print("  adjudication:", json.dumps(report.run["adjudication"], sort_keys=True))
             if assisted is not None:
                 print("  assistant:", json.dumps(assisted, sort_keys=True))
+            if calibrated is not None:
+                print("  calibration:", json.dumps(calibrated, sort_keys=True))
     return 0
+
+
+def _eval_calibration(args: argparse.Namespace, engine, truth, bench, report) -> dict:
+    """The oracle answers the --answer most impactful reviews; their labels set new
+    thresholds, and the other reviews are triaged again (design 10 §4.3)."""
+    from thisness.benchmark import calibration
+
+    profile = engine.profiles[bench.entity_type]
+    t_low = profile.max_negative_weight
+    if t_low is None:
+        t_low = engine.edge_policy.t_low
+    return calibration.run(engine, truth, bench, answer=args.answer, t_high=report.run["t_high"],
+                           t_low=t_low, epsilon=args.epsilon).as_dict()  # fmt: skip
 
 
 def _eval_assistant(args: argparse.Namespace, engine, truth, bench) -> dict:
@@ -749,6 +766,15 @@ def parser() -> argparse.ArgumentParser:
     )
     g.add_argument("--oracle-error", type=float, default=0.0)
     g.add_argument("--oracle-fold", type=float, default=0.0)
+    s.add_argument("--answer", type=int, default=0,
+                   help="the oracle answers this many reviews; their labels recalibrate the "
+                        "thresholds and the rest are triaged again (design 10 §4.3)")  # fmt: skip
+    s.add_argument(
+        "--epsilon",
+        type=float,
+        default=0.01,
+        help="with --answer: the error rate a calibrated threshold may allow",
+    )
     s.add_argument("--accept", action="store_true",
                    help="with --assistant: accept the suggestions each profile accepts in bulk, "
                         "then report what is left (design 10 §4.2)")  # fmt: skip

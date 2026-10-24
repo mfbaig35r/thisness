@@ -1,6 +1,6 @@
 # Design 10: scale, and the review loop
 
-Status: accepted 2026-10-18, with the decisions of section 7 as proposed. Steps 1 to 4 done (§10.1 to §10.4); step 3 closed at 217,337 records and 10.7 GB, with decisions 7 and 8 deferred; decision 5 revised at step 4.
+Status: accepted 2026-10-18, with the decisions of section 7 as proposed. Complete 2026-10-23 (§10.1 to §10.5): step 3 closed at 217,337 records and 10.7 GB, with decisions 7 and 8 deferred; decision 5 revised at step 4; step 5's experiment failed its test, so calibration and triage are not built (decision 6).
 
 Builds on: design 03 (consensus, §9 to §11), design 04 (reviews, §2.4; labels from reviews, §2.7), design 05 (the review assistant, §5), design 07 §13.4 (scale on real organizations) and design 09 §11.4 and §11.5 (the assistant and scale on real people), as of 0.3.1 (commit 0309faf).
 
@@ -161,7 +161,7 @@ Part B does not wait for part A beyond step 1: bulk acceptance at 46,565 records
 3. **Evidence storage stays one row per comparison per pair.** Writing it in chunks keeps the schema; moving evidence into SQL (unpivoting the scored table inside DuckDB) is the fallback only if chunking misses the memory target.
 4. **Who accepts in bulk.** Proposed: a person, named as the actor of every accepted review, with the model's recommendation linked. Not an unattended model decision: that is `model_role="decide"`, which stays per profile as now.
 5. **Default kinds to accept.** Proposed: organizations "same", "related", "different"; people and taxa none. Revised at step 4 (§10.4): organizations "related" and "different" only, the kinds that never merge.
-6. **Labels.** Proposed: calibrated thresholds and triage, behind the leverage experiment; semi-supervised EM not now.
+6. **Labels.** Proposed: calibrated thresholds and triage, behind the leverage experiment; semi-supervised EM not now. Settled at step 5 (§10.5): the experiment's leverage was 0 and 0.1, so neither is built and labels stay an export.
 7. **A benchmark above 217,337 records** (added at step 3). The UK benchmark cannot reach 250,000 without companies that have no LEI. Deferred 2026-10-22: 217,337 is enough to close the scale step.
 8. **Consensus on integer indexes, and skipping teardown** (added at step 3), to meet 8 GB at 217,337 records. Deferred 2026-10-22 until a real list needs it; the review loop (steps 4 and 5) comes first.
 
@@ -300,4 +300,20 @@ Accepting in bulk, then:
 **Decision 5 is revised.** At 3,507 records every "same" was right; at 46,565, 9 of 306 merged different companies, 8 more false-merge clusters. By the rule of §8 (a kind with a measured false-merge rate gets no default), organizations accept "related" and "different" by default: those never merge, a wrong one only leaves a match apart, and they close 59% and 61% of reviews. "same" is one flag away for whoever wants its recall (.934 to .943) at that price. The "with same" rows were measured; the default rows were replayed from the same cassettes.
 
 Of the 716 left with "same", 597 were regroupings (82% right) and 98 unsure: the work that stays a person's.
+
+### 10.5 Step 5: the calibration experiment
+
+`thisness eval --answer N [--epsilon E]` (`benchmark.calibration`) has the oracle answer the N most impactful reviews in the queue's order, takes their labels (`thisness.labels`), sets new thresholds from them, triages every other open review again, and closes those whose scored pairs all leave the contested band without a negative pair inside a group. A threshold moves to the lowest (T_high) or highest (T_low) weight where the Wilson bound on the wrong-label rate beyond it is at most E (default 1%), so a handful of labels cannot move it; neither may pass the other. The experiment changes no engine behaviour.
+
+N = 200, E = 1%:
+
+| Benchmark | Reviews | Labels | Thresholds (T_high, T_low) | Closed by triage | Leverage | Still contested |
+|---|---|---|---|---|---|---|
+| UK, 3,507 records | 237 | 12,534 | 12.0, 0 → 8.95, 0.58 | 6 (5 right, 1 leaves a match apart) | 0.03 | 31 of 31 open |
+| UK, 46,565 | 2,629 | 61,615 | 12.0, 0 → unchanged | 0 | 0 | 2,426 of 2,429 open |
+| EDGAR people, 10,000 (28,692 records) | 4,059 | 11,632 | 12.0, 0 → 12.0, 1.14 | 20 (10 right, 10 leave a match apart) | 0.1 | 3,823 of 3,839 open |
+
+**The test fails, and by a wide margin:** leverage needed to reach 1 at N = 200 on UK 46,565 and EDGAR 10,000; it was 0 and 0.1. The reason is in the last column. A review stays open because its pairs are contested, and the labels show why they are: matches and non-matches overlap across the whole band (57% of the open reviews' scored pairs at 46,565 records are still contested after calibration, 76% for people). No threshold separates them; that is what made them reviews. Moving T_low for people closed 20 reviews and half of those split a person in two. So, by decision 6, calibrated thresholds and triage are not built, semi-supervised EM is not tried on this evidence, and labels stay an export.
+
+**What the same runs show instead is the worth of the first answers.** The oracle's 200 answers, the most impactful reviews first, took the UK run at 46,565 records from 63 false-merge clusters to 39 (precision .9965 to .998, recall .934 to .938) and the people run's recall from .715 to .750. The queue's order already puts a person's time where it counts; the bulk acceptance of §10.4 clears what a model can, and what is left is a person's.
 
