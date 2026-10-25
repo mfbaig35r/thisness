@@ -180,5 +180,5 @@ def test_candidates_record_into_the_store(h, ids, now):
             "stage_id", pa.array([stage.stage_id] * n)
         )
     )
-    stored = h.store._con.execute("SELECT count(*) FROM candidates").fetchone()[0]
+    stored = h.store._con.execute("SELECT count(*) FROM candidates").fetchall()[0][0]
     assert stored == n > 0

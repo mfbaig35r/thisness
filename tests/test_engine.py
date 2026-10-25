@@ -140,7 +140,7 @@ def test_dry_run_changes_nothing(engine, store):
     result = engine.resolve_many("organization", commit=False)
     assert not result.committed and result.changes is not None
     assert store.run(result.run_id).status == "proposed"
-    assert store._con.execute("SELECT count(*) FROM memberships").fetchone()[0] == 0
+    assert store._con.execute("SELECT count(*) FROM memberships").fetchall()[0][0] == 0
     # Facts were recorded (decisions, evidence); identity state did not move.
     assert store.head_seq() > head
     assert all(

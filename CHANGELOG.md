@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.4 (2026-10-25)
+
+- **No warning on every read with DuckDB 2.0.** Queries are read into Arrow through a relation (`con.sql`) instead of an `execute` result, which DuckDB 2.0 warned copies the rows once more. Output is identical: three benchmark stores (UK at 3,507 and 12,605 records, EDGAR people at 2,893) hash the same before and after. Tested on DuckDB 1.3.0, 1.5.6 and 2.0.0.
+- **Accepting suggestions in bulk, and scale to 217,337 records** (design 10 steps 3 to 5): `thisness reviews accept`, reviews per 1,000 records in `thisness eval`, and lower memory per candidate pair. See the README.
+- **Known limits** quote the current scale: 217,337 records in 9 minutes at a 10.7 GB peak.
+
 ## 0.3.3 (2026-10-22)
 
 - **DuckDB 2.0 works, and the cap is gone.** The store reads single rows to the end (DuckDB 2.0 refused to register a table while a result read with `fetchone()` was open), and the UK benchmark's SQL uses the `lambda x: ...` syntax, the only one DuckDB 2.0 accepts by default. Tested on DuckDB 1.3.0, 1.5.6 and 2.0.0.

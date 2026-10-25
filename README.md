@@ -118,7 +118,7 @@ The people benchmark is real company insiders and their real namesakes: one insi
 
 ## Known limits
 
-- **Memory grows with candidate pairs.** 46,565 records took 7.5 minutes of CPU and 7.8 GB peak memory; scoring holds every candidate pair in Python. Tested to about fifty thousand records.
+- **Memory grows with candidate pairs.** A run keeps Python state for every candidate pair, about 1.9 KB each. On real UK companies with a file-backed store, 86,136 records (2 million pairs) resolve in 200 s at a 3.77 GB peak, and 217,337 records (5.5 million pairs), the largest run so far, in 9 minutes at 10.7 GB (design 10 §10.3).
 - **Candidates come from blocking keys.** There is no embedding-based candidate generator yet, so two records that share no blocking key (a renamed company with nothing else in common, a heterotypic synonym with no authority loaded) are never compared directly.
 - **For people, the model suggests.** On 1,000 real people, gpt-6-luna deciding contested pairs merged namesakes (false-merge clusters 2 to 18); as the review assistant, 86% of its suggestions would be right. People default to `model_role="suggest"`.
 - **Model costs are real.** About $0.62 for 400 UK companies with gpt-6-luna, the default. Use `--budget`, and `--replay` to re-run without paying again.

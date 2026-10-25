@@ -87,5 +87,5 @@ class World:
             "review_items",
         ]
         return {
-            t: self.store._con.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in tables
+            t: self.store._con.execute(f"SELECT count(*) FROM {t}").fetchall()[0][0] for t in tables
         }

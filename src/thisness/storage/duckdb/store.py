@@ -234,10 +234,16 @@ _CANDIDATE_COLUMNS = [
 ]
 
 
-def _arrow(result: duckdb.DuckDBPyConnection) -> pa.Table:
-    """Fetch a result as an Arrow table across DuckDB versions (the method was renamed
-    in 1.5). Reading through Arrow also yields timezone-aware datetimes without pytz."""
-    fetch = getattr(result, "to_arrow_table", None) or result.fetch_arrow_table
+def _arrow(
+    con: duckdb.DuckDBPyConnection, sql: str, params: list[Any] | dict[str, Any] | None = None
+) -> pa.Table:
+    """A query's result as an Arrow table across DuckDB versions (the method was renamed
+    in 1.5). Read through a relation: DuckDB 2.0 warns that Arrow from an ``execute``
+    result copies the rows once more. A relation also refuses to run while another
+    result on the connection is unfinished, so every read reads to the end (``_first``).
+    Reading through Arrow also yields timezone-aware datetimes without pytz."""
+    relation = con.sql(sql) if params is None else con.sql(sql, params=params)
+    fetch = getattr(relation, "to_arrow_table", None) or relation.fetch_arrow_table
     return fetch()
 
 
@@ -883,10 +889,9 @@ class DuckDBStore:
             self._con.register("_oids", pa.table({"id": list(ids)}))
             try:
                 rows = _arrow(
-                    self._con.execute(
-                        "SELECT o.* FROM observations o JOIN _oids ON observation_id = id "
-                        "ORDER BY observation_id"
-                    )
+                    self._con,
+                    "SELECT o.* FROM observations o JOIN _oids ON observation_id = id "
+                    "ORDER BY observation_id",
                 ).to_pylist()
             finally:
                 self._con.unregister("_oids")
@@ -915,7 +920,7 @@ class DuckDBStore:
 
     def _all(self, sql: str, params: list[Any] | dict[str, Any] | None = None) -> list[dict]:
         with self._lock:
-            return _arrow(self._con.execute(sql, params or [])).to_pylist()
+            return _arrow(self._con, sql, params or []).to_pylist()
 
     def _one(self, sql: str, params: list[Any]) -> dict[str, Any] | None:
         rows = self._all(sql, params)
@@ -939,11 +944,10 @@ class DuckDBStore:
             self._con.register("_fids", pa.table({"id": list(observation_ids)}))
             try:
                 table = _arrow(
-                    self._con.execute(
-                        "SELECT f.observation_id, f.feature, f.value FROM observation_features f "
-                        "JOIN _fids ON f.observation_id = id WHERE f.value IS NOT NULL "
-                        "ORDER BY f.observation_id, f.feature, f.ordinal"
-                    )
+                    self._con,
+                    "SELECT f.observation_id, f.feature, f.value FROM observation_features f "
+                    "JOIN _fids ON f.observation_id = id WHERE f.value IS NOT NULL "
+                    "ORDER BY f.observation_id, f.feature, f.ordinal",
                 )
             finally:
                 self._con.unregister("_fids")
@@ -962,7 +966,7 @@ class DuckDBStore:
         with self._lock:
             self._con.register("_qids", pa.table({"id": list(ids)}))
             try:
-                return _arrow(self._con.execute(sql)).to_pylist()
+                return _arrow(self._con, sql).to_pylist()
             finally:
                 self._con.unregister("_qids")
 
@@ -1040,7 +1044,7 @@ class DuckDBStore:
             LEFT JOIN provisional ON provisional.entity_id = mem.entity_id
             ORDER BY obs.observation_id
         """
-        return _arrow(self._con.execute(query, [as_of_seq, entity_type]))
+        return _arrow(self._con, query, [as_of_seq, entity_type])
 
     def members_of(self, entity_ids: Sequence[str]) -> dict[str, list[str]]:
         """Current members of each entity, in id (ingest) order."""
@@ -1367,13 +1371,12 @@ class DuckDBStore:
             self._con.register("_jids", pa.table({"id": list(observation_ids)}))
             try:
                 rows = _arrow(
-                    self._con.execute(
-                        f"SELECT d.body FROM decisions d WHERE d.decision_type = 'pair' "
-                        f"AND d.left_id IN (SELECT id FROM _jids) "
-                        f"AND d.right_id IN (SELECT id FROM _jids) {run_filter} "
-                        "ORDER BY d.decision_id",
-                        {"run": run_id} if run_id is not None else {},
-                    )
+                    self._con,
+                    f"SELECT d.body FROM decisions d WHERE d.decision_type = 'pair' "
+                    f"AND d.left_id IN (SELECT id FROM _jids) "
+                    f"AND d.right_id IN (SELECT id FROM _jids) {run_filter} "
+                    "ORDER BY d.decision_id",
+                    {"run": run_id} if run_id is not None else {},
                 ).to_pylist()
             finally:
                 self._con.unregister("_jids")
@@ -1509,7 +1512,7 @@ class DuckDBStore:
 
     def _pairs(self, sql: str, params: dict[str, Any]) -> pa.Table:
         with self._lock:
-            return _arrow(self._con.execute(sql, params))
+            return _arrow(self._con, sql, params)
 
     def blocking_pairs(self, run_id: str, feature: str, max_block: int) -> pa.Table:
         """Observations sharing a value of ``feature``. Values held by more than
@@ -1638,7 +1641,8 @@ class DuckDBStore:
             else "count(DISTINCT f.observation_id)"
         )
         with self._lock:
-            result = self._con.execute(
+            return _arrow(
+                self._con,
                 f"""
                 SELECT f.value, {unit} AS n FROM observation_features f
                 LEFT JOIN memberships m
@@ -1648,7 +1652,6 @@ class DuckDBStore:
                 """,
                 [feature],
             )
-            return _arrow(result)
 
 
 class _Reader:
