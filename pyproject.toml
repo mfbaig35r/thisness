@@ -1,6 +1,6 @@
 [project]
 name = "thisness"
-version = "0.3.4"
+version = "0.3.5"
 description = "Identity resolution for imperfect observations: evidence, stable identities, reversible history."
 readme = "README.md"
 license = "Apache-2.0"

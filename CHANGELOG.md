@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.5 (2026-10-26)
+
+- **A sharper comparison in the README** with Splink, Dedupe, Zingg and Senzing: Splink's four backends and what it keeps between runs, Dedupe's labels up front against fitting without them, Zingg's licence, and Senzing's scale. No code changes.
+
 ## 0.3.4 (2026-10-25)
 
 - **No warning on every read with DuckDB 2.0.** Queries are read into Arrow through a relation (`con.sql`) instead of an `execute` result, which DuckDB 2.0 warned copies the rows once more. Output is identical: three benchmark stores (UK at 3,507 and 12,605 records, EDGAR people at 2,893) hash the same before and after. Tested on DuckDB 1.3.0, 1.5.6 and 2.0.0.
